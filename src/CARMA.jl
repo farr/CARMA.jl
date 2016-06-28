@@ -1,5 +1,9 @@
 module CARMA
 
-# package code goes here
+include("Kalman.jl")
 
-end # module
+using .Kalman
+
+export Kalman
+
+end 
