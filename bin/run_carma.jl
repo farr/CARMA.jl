@@ -3,7 +3,6 @@ blas_set_num_threads(1)
 
 using Ensemble
 using CARMA
-using Kalman
 
 usage = "julia run_carma.jl DATAFILE P Q [NLIVE]"
 
