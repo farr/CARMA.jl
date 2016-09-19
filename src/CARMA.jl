@@ -1,9 +1,11 @@
 module CARMA
 
 include("Kalman.jl")
+include("Green.jl")
 
+using .Green
 using .Kalman
 
-export Kalman
+export Green, Kalman
 
 end 
