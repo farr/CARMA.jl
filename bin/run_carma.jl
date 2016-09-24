@@ -59,4 +59,4 @@ nest_state = EnsembleNest.NestState(x -> Kalman.log_likelihood(post, x), x -> Ka
 
 EnsembleNest.run!(nest_state, 0.1)
 
-open(stream -> serialize(stream, nest_state), "state-$(p)-$(q).dat", "w")
+open(stream -> serialize(stream, (post, nest_state)), "state-$(p)-$(q).dat", "w")
