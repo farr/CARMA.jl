@@ -895,7 +895,7 @@ function to_params(post::CARMAKalmanPosterior, x::Array{Float64,1})
     CARMAPosteriorParams(x[1], x[2], x[3], to_roots(x[4:3+post.p]), to_roots(x[4+post.p:end]))
 end
 
-function to_array(post, p)
+function to_array(post::CARMAKalmanPosterior, p::CARMAPosteriorParams)
     x = zeros(nparams(post))
 
     x[1] = p.mu
@@ -1271,5 +1271,304 @@ function predict(post, p, ts::Array{Float64, 1})
 
     ys_out[size(post.ts,1)+1:end], vys_out[size(post.ts,1)+1:end]    
 end
+
+type MultiSegmentCARMAKalmanPosterior
+    ts::Array{Array{Float64, 1}, 1}
+    ys::Array{Array{Float64, 1}, 1}
+    dys::Array{Array{Float64, 1}, 1}
+    p::Int
+    q::Int
+
+    function MultiSegmentCARMAKalmanPosterior(ts, ys, dys, p, q)
+        @assert p>0
+        @assert q<p
+        @assert q>0
+
+        @assert all(diff(vcat(ts...)) .> 0.0)
+
+        new(ts, ys, dys, p, q)
+    end
+end
+
+function nparams(post::MultiSegmentCARMAKalmanPosterior)
+    post.p + post.q + 1 + 2*size(post.ts,1)
+end
+
+function nsegments(post::MultiSegmentCARMAKalmanPosterior)
+    size(post.ts, 1)
+end
+
+type MultiSegmentCARMAPosteriorParams
+    mu::Array{Float64, 1}
+    sigma::Float64
+    nu::Array{Float64, 1}
+    arroots::Array{Complex128, 1}
+    maroots::Array{Complex128, 1}
+end
+
+function to_params(post::MultiSegmentCARMAPosteriorParams, x::Array{Float64, 1})
+    @assert size(x, 1)==nparams(post)
+
+    ns = nsegments(post)
+    
+    MultiSegmentCARMAPosteriorParams(x[1:ns], x[ns+1], x[ns+2:2*ns+1], to_roots(x[2*ns+2:2*ns+1+post.p]), to_roots(x[2*ns+2+post.p:end]))
+end
+
+function to_array(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    x = zeros(nparams(post))
+
+    ns = nsegments(post)
+
+    x[1:ns] = p.mu
+    x[ns+1] = p.sigma
+    x[ns+2:2*ns+1] = p.nu
+    x[2*ns+2:2*ns+1+post.p] = to_rparams(p.arroots)
+    x[2*ns+2+post.p:end] = to_rparams(p.maroots)
+end
+
+function rmin_rmax(post::MultiSegmentCARMAKalmanPosterior)
+    dt = minimum(diff(vcat(post.ts...)))
+    T = post.ts[end][end] - post.ts[1][1]
+
+    min_r = 1.0/T
+    max_r = 1.0/dt
+
+    min_r, max_r
+end
+
+function log_prior(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    ns = nsegments(post)
+    if !root_params_ordered(x[ns+3:ns+2+post.p]) || !root_params_ordered(x[ns+3+post.p:end])
+        return -Inf
+    end
+    log_prior(post, to_params(post, x))
+end
+
+function log_prior(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    min_r, max_r = rmin_rmax(post)
+
+    mus = Float64[mean(y) for y in post.ys]
+    sigs = Float64[std(y) for y in post.ys]
+
+    if any(p.mu .< mus - 10.0*sigs) || any(p.mu .> mus + 10.0*sigs)
+        return -Inf
+    end
+
+    sigwts = Float64[size(y,1)-1 for y in post.ys]
+    sig_tot = sqrt(sum(sigwts.*sigs.*sigs)/sum(sigwts))
+
+    if p.sigma < sig / 10.0 || p.sigma > sig*10.0
+        return -Inf
+    end
+
+    if any(p.nu .< 0.1) || any(p.nu .> 10.0)
+        return -Inf
+    end
+
+    for i in 1:post.p
+        r = p.arroots[i]
+        if real(r) < -max_r || real(r) > -min_r
+            return -Inf
+        end
+
+        if imag(r) < -max_r || imag(r) > max_r
+            return -Inf
+        end
+    end
+
+    for i in 1:post.p
+        r = p.maroots[i]
+        if real(r) < -max_r || real(r) > -min_r
+            return -Inf
+        end
+
+        if imag(r) < -max_r || imag(r) > max_r
+            return -Inf
+        end
+    end
+
+    -log(p.sigma) - sum(log(p.nu))
+end
+
+function make_filter(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    CARMAKalmanFilter(post, p)
+end
+
+function CARMAKalmanFilter(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    CARMAKalmanFilter(post, to_params(post, x))
+end
+
+function CARMAKalmanFilter(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    CARMAKalmanFilter(0.0, p.sigma, p.arroots, p.maroots)
+end
+
+function generate(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    generate(post, to_params(post, x))
+end
+
+function generate(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    filt = CARMAKalmanFilter(post, p)
+
+    dys = [dy*nu for (dy, nu) in zip(post.dys, p.nu)]
+
+    ys = [generate(filt, ts, dy) + mu for (ts,mu,dy) in zip(post.ts, p.mu, dys)]
+
+    ys, dys
+end
+
+function log_likelihood(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    log_likelihood(post, to_params(post, x))
+end
+
+function log_likelihood(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    filt = CARMAKalmanFilter(post, p)
+
+    sum(Float64[log_likelihood(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)])
+end
+
+function log_posterior(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    log_posterior(post, to_params(post, x))
+end
+
+function log_posterior(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    lp = log_prior(post, p)
+
+    if lp == -Inf
+        lp
+    else
+        lp + log_likelihood(post, p)
+    end
+end
+
+function init(post::MultiSegmentCARMAPosteriorParams, n)
+    rmin, rmax = rmin_rmax(post)
+
+    mu0s = Float64[mean(y) for y in post.ys]
+    sig0s = Float64[std(y) for y in post.ys]
+
+    sigwts = Float64[size(y,1)-1 for y in post.ys]
+    total_sig = sqrt(sum(sigwts.*sig0s.*sig0s)/sum(sigwts))
+
+    xs = zeros((nparams(post), n))
+
+    for i in 1:n
+        mus = mu0s-10.0*sig0s + 20.0*sig0s.*rand(size(sig0s,1))
+        sig = exp(log(0.1*total_sig) + rand()*(log(10.0*total_sig) - log(0.1*total_sig)))
+        nus = exp(log(0.1) + rand(size(mu0s,1))*(log(10.0) - log(1.0)))
+
+        arroots = randroots(rmin, rmax, post.p)
+        maroots = randroots(rmin, rmax, post.q)
+
+        p = MultiSegmentCARMAPosteriorParams(mus, sig, nus, arroots, maroots)
+        xs[:,i] = to_array(post,p)
+    end
+
+    xs
+end
+
+function whiten(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    whiten(post, to_params(post, x))
+end
+
+function whiten(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    filt = CARMAKalmanFilter(post, p)
+
+    whitens = [whiten(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)]
+
+    ys = [y for (y, dy) in whitens]
+    dys = [dy for (y, dy) in whitens]
+
+    ys, dys
+end
+
+function residuals(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    residuals(post, to_params(post, p))
+end
+
+function residuals(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    filt = CARMAKalmanFilter(post, p)
+
+    [residuals(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)]
+end
+
+function psdfreq(post::MultiSegmentCARMAKalmanPosterior; nyquist_factor=1.0, oversample_factor=1.0)
+    T = post.ts[end][end] - post.ts[1][1]
+    dt_med = median(diff(vcat(post.ts...)))
+
+    fmax = nyquist_factor/(2.0*dt_med)
+    df = 1.0/(oversample_factor*T)
+
+    collect(df:df:fmax)
+end
+
+function psd(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 2}, fs::Array{Float64, 1})
+    psds = [psd(post, x[:,i], fs) for i in 1:size(x,2)]
+    hcat(psds...)
+end
+
+function psd(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1}, fs::Array{Float64, 1})
+    psd(post, to_params(post, x), fs)
+end
+
+function psd(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams, fs::Array{Float64, 1})
+    psd = zeros(size(fs, 1))
+
+    filt = CARMAKalmanFilter(post, p)
+
+    for i in 1:size(fs, 1)
+        f = fs[i]
+        tpif = 2.0*pi*1.0im*f
+
+        numer = polyeval(p.maroots, tpif) / polyeval(p.maroots, 0.0+0.0im)
+        denom = polyeval(p.arroots, tpif)
+
+        psd[i] = filt.sig*filt.sig*abs2(numer)/abs2(denom)
+    end
+
+    psd
+end
+
+function frequencies(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    frequencies(post, to_params(post, x))
+end
+
+function frequencies(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    imag(p.arroots)/(2.0*pi)
+end
+
+function frequencies(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 2})
+    fs = [frequencies(post, x[:,i]) for i in 1:size(x,2)]
+    hcat(fs...)
+end
+
+function drates(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    drates(post, to_params(post, x))
+end
+
+function drates(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    real(p.arroots)
+end
+
+function drates(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 2})
+    drs = [drates(post, x[:,i]) for i in 1:size(x,2)]
+    hcat(drs...)
+end
+
+function qfactors(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    qfactors(post, to_params(post, x))
+end
+
+function qfactors(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    fs = frequencies(post, p)
+    dr = drates(post, p)
+
+    fs ./ dr
+end
+
+function qfactors(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 2})
+    qs = [qfactors(post, x[:,i]) for i in 1:size(x,2)]
+    hcat(qs...)
+end
+
 
 end
