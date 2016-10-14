@@ -1306,7 +1306,7 @@ type MultiSegmentCARMAPosteriorParams
     maroots::Array{Complex128, 1}
 end
 
-function to_params(post::MultiSegmentCARMAPosteriorParams, x::Array{Float64, 1})
+function to_params(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
     @assert size(x, 1)==nparams(post)
 
     ns = nsegments(post)
@@ -1324,6 +1324,8 @@ function to_array(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPo
     x[ns+2:2*ns+1] = p.nu
     x[2*ns+2:2*ns+1+post.p] = to_rparams(p.arroots)
     x[2*ns+2+post.p:end] = to_rparams(p.maroots)
+
+    x
 end
 
 function rmin_rmax(post::MultiSegmentCARMAKalmanPosterior)
@@ -1357,7 +1359,7 @@ function log_prior(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAP
     sigwts = Float64[size(y,1)-1 for y in post.ys]
     sig_tot = sqrt(sum(sigwts.*sigs.*sigs)/sum(sigwts))
 
-    if p.sigma < sig / 10.0 || p.sigma > sig*10.0
+    if p.sigma < sig_tot / 10.0 || p.sigma > sig_tot*10.0
         return -Inf
     end
 
@@ -1376,7 +1378,7 @@ function log_prior(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAP
         end
     end
 
-    for i in 1:post.p
+    for i in 1:post.q
         r = p.maroots[i]
         if real(r) < -max_r || real(r) > -min_r
             return -Inf
@@ -1440,7 +1442,7 @@ function log_posterior(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCA
     end
 end
 
-function init(post::MultiSegmentCARMAPosteriorParams, n)
+function init(post::MultiSegmentCARMAKalmanPosterior, n)
     rmin, rmax = rmin_rmax(post)
 
     mu0s = Float64[mean(y) for y in post.ys]
@@ -1473,12 +1475,7 @@ end
 function whiten(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
     filt = CARMAKalmanFilter(post, p)
 
-    whitens = [whiten(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)]
-
-    ys = [y for (y, dy) in whitens]
-    dys = [dy for (y, dy) in whitens]
-
-    ys, dys
+    [whiten(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)]
 end
 
 function residuals(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
@@ -1488,7 +1485,12 @@ end
 function residuals(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
     filt = CARMAKalmanFilter(post, p)
 
-    [residuals(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)]
+    rsdrs = [residuals(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)]
+
+    rs = [r for (r,dr) in rsdrs]
+    drs = [dr for (r,dr) in rsdrs]
+
+    rs, drs
 end
 
 function psdfreq(post::MultiSegmentCARMAKalmanPosterior; nyquist_factor=1.0, oversample_factor=1.0)
