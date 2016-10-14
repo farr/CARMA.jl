@@ -1340,7 +1340,7 @@ end
 
 function log_prior(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
     ns = nsegments(post)
-    if !root_params_ordered(x[ns+3:ns+2+post.p]) || !root_params_ordered(x[ns+3+post.p:end])
+    if !root_params_ordered(x[2*ns+2:2*ns+1+post.p]) || !root_params_ordered(x[2*ns+2+post.p:end])
         return -Inf
     end
     log_prior(post, to_params(post, x))
