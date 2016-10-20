@@ -998,7 +998,16 @@ function log_likelihood(post::CARMAKalmanPosterior, x::Array{Float64, 1})
 end
 
 function log_likelihood(post::CARMAKalmanPosterior, x::CARMAPosteriorParams)
-    filt = CARMAKalmanFilter(post, x)
+    try
+        filt = CARMAKalmanFilter(post, x)
+    catch e
+        if isa(e, DomainError)
+            warn("Could not construct Kalman filter for parameters $(x)")
+            return -Inf
+        else
+            rethrow()
+        end
+    end
 
     dys = post.dys * x.nu
 
@@ -1423,7 +1432,16 @@ function log_likelihood(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64
 end
 
 function log_likelihood(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
-    filt = CARMAKalmanFilter(post, p)
+    try
+        filt = CARMAKalmanFilter(post, p)
+    catch e
+        if isa(e, DomainError)
+            warn("Could not construct Kalman filter for parameters $(p)")
+            return -Inf
+        else
+            rethrow()
+        end
+    end
 
     sum(Float64[log_likelihood(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)])
 end
