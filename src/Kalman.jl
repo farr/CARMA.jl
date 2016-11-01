@@ -1497,7 +1497,7 @@ function whiten(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPost
 end
 
 function residuals(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
-    residuals(post, to_params(post, p))
+    residuals(post, to_params(post, x))
 end
 
 function residuals(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
