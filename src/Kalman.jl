@@ -998,6 +998,7 @@ function log_likelihood(post::CARMAKalmanPosterior, x::Array{Float64, 1})
 end
 
 function log_likelihood(post::CARMAKalmanPosterior, x::CARMAPosteriorParams)
+    filt = nothing
     try
         filt = CARMAKalmanFilter(post, x)
     catch e
@@ -1432,6 +1433,7 @@ function log_likelihood(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64
 end
 
 function log_likelihood(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    filt = nothing
     try
         filt = CARMAKalmanFilter(post, p)
     catch e
