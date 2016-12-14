@@ -1294,8 +1294,6 @@ type MultiSegmentCARMAKalmanPosterior
         @assert q<p
         @assert q>0
 
-        @assert all(diff(vcat(ts...)) .> 0.0)
-
         new(ts, ys, dys, p, q)
     end
 end
@@ -1339,8 +1337,10 @@ function to_array(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPo
 end
 
 function rmin_rmax(post::MultiSegmentCARMAKalmanPosterior)
-    dt = minimum(diff(vcat(post.ts...)))
-    T = post.ts[end][end] - post.ts[1][1]
+    allts = sort(vcat(post.ts...))
+
+    dt = minimum(diff(allts))
+    T = allts[end] - allts[1]
 
     min_r = 1.0/T
     max_r = 1.0/dt
@@ -1414,22 +1414,35 @@ function CARMAKalmanFilter(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegme
     CARMAKalmanFilter(0.0, p.sigma, p.arroots, p.maroots)
 end
 
-function generate(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
-    generate(post, to_params(post, x))
-end
-
-function generate(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
-    filt = CARMAKalmanFilter(post, p)
-
-    dys = [dy*nu for (dy, nu) in zip(post.dys, p.nu)]
-
-    ys = [generate(filt, ts, dy) + mu for (ts,mu,dy) in zip(post.ts, p.mu, dys)]
-
-    ys, dys
-end
-
 function log_likelihood(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
     log_likelihood(post, to_params(post, x))
+end
+
+function alltsysdys(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    allts = vcat(post.ts...)
+
+    ys = Array{Float64, 1}[ys - mu for (ys, mu) in zip(post.ys, p.mu)]
+    dys = Array{Float64, 1}[dys*nu for (dys, nu) in zip(post.dys, p.nu)]
+
+    allys = vcat(ys...)
+    alldys = vcat(dys...)
+
+    inds = sortperm(allts)
+    allrinds = invperm(inds)  # Gives the index in the allts array
+                           # corresponding to each data point
+    allts = allts[inds]
+    allys = allys[inds]
+    alldys = alldys[inds]
+
+    rinds = Array{Int, 1}[]
+    i = 1
+    for t in post.ts
+        n = size(t, 1)
+        push!(rinds, allrinds[i:i+n-1])
+        i = i + n
+    end
+
+    (allts, allys, alldys, rinds)
 end
 
 function log_likelihood(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
@@ -1445,7 +1458,9 @@ function log_likelihood(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentC
         end
     end
 
-    sum(Float64[log_likelihood(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)])
+    allts, allys, alldys, rinds = alltsysdys(post, p)
+
+    log_likelihood(filt, allts, allys, alldys)
 end
 
 function log_posterior(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
@@ -1488,34 +1503,9 @@ function init(post::MultiSegmentCARMAKalmanPosterior, n)
     xs
 end
 
-function whiten(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
-    whiten(post, to_params(post, x))
-end
-
-function whiten(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
-    filt = CARMAKalmanFilter(post, p)
-
-    [whiten(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)]
-end
-
-function residuals(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
-    residuals(post, to_params(post, x))
-end
-
-function residuals(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
-    filt = CARMAKalmanFilter(post, p)
-
-    rsdrs = [residuals(filt, ts, ys-mu, dys*nu) for (ts, ys, dys, mu, nu) in zip(post.ts, post.ys, post.dys, p.mu, p.nu)]
-
-    rs = [r for (r,dr) in rsdrs]
-    drs = [dr for (r,dr) in rsdrs]
-
-    rs, drs
-end
-
 function psdfreq(post::MultiSegmentCARMAKalmanPosterior; nyquist_factor=1.0, oversample_factor=1.0)
     T = post.ts[end][end] - post.ts[1][1]
-    dt_med = median(diff(vcat(post.ts...)))
+    dt_med = median(diff(sort(vcat(post.ts...))))
 
     fmax = nyquist_factor/(2.0*dt_med)
     df = 1.0/(oversample_factor*T)
@@ -1592,5 +1582,39 @@ function qfactors(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 2})
     hcat(qs...)
 end
 
+function residuals(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
+    residuals(post, to_params(post, x))    
+end
+
+function residuals(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
+    filt = CARMAKalmanFilter(post, p)
+
+    allts, allys, alldys, rinds = alltsysdys(post, p)
+    allrs, alldrs = residuals(filt, allts, allys, alldys)
+
+    rs = [[allrs[i] for i in ri] for ri in rinds]
+    drs = [[alldrs[i] for i in ri] for ri in rinds]
+
+    (rs, drs)
+end
+
+function predict(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1}, ts::Array{Float64, 1})
+    predict(post, to_params(post, x), ts)
+end
+
+function predict(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams, ts::Array{Float64, 1})
+    allts, allys, alldys, rinds = alltsysdys(post)
+
+    singlepost = CARMAKalmanPosterior(allts, allys, alldys, post.p, post.q)
+    singleparms = to_params(singlepost, zeros(nparams(singlepost)))
+
+    singleparams.mu = 0.0
+    singleparams.sigma = p.sigma
+    singleparams.nu = 1.0
+    singleparams.arroots = p.arroots
+    singleparams.maroots = p.maroots
+
+    predict(singlepost, singleparams, ts)
+end
 
 end
