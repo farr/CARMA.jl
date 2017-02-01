@@ -29,6 +29,9 @@ end
 
 nmcmc = 128
 
+outfile = "state-$(p)-$(q).dat"
+ckpt_file = "state-$(p)-$(q).ckpt"
+
 ts = Array{Float64, 1}[]
 ys = Array{Float64, 1}[]
 dys = Array{Float64, 1}[]
@@ -62,11 +65,23 @@ for f in files
 end
 
 post = Kalman.MultiSegmentCARMAKalmanPosterior(ts, ys, dys, p, q)
+function logl(x)
+    Kalman.log_likelihood(post, x)
+end
+function logp(x)
+    Kalman.log_prior(post, x)
+end
 
-nest_state = EnsembleNest.NestState(x -> Kalman.log_likelihood(post, x), x -> Kalman.log_prior(post, x), Kalman.init(post, nlive), nmcmc)
+if ispath(ckpt_file)
+    nest_state = open(deserialize, ckpt_file, "r")
+else
+    nest_state = EnsembleNest.NestState(logl, logp, Kalman.init(post, nlive), nmcmc)
+end
 
-EnsembleNest.run!(nest_state, 0.1)
+EnsembleNest.run!(nest_state, 0.1, verbose=true, ckpt_file=ckpt_file)
 
-open("state-$(p)-$(q).dat", "w") do stream
-    serialize(stream, (post, nest_state))
+open(stream -> serialize(stream, (post, nest_state)), outfile, "w")
+
+if ispath(ckpt_file)
+    rm(ckpt_file)
 end

@@ -22,6 +22,9 @@ end
 
 nmcmc = 128
 
+outfile = "state-$(p)-$(q).dat"
+ckpt_file = "state-$(p)-$(q).ckpt"
+
 data = readdlm(datafile)
 data = data[sortperm(data[:,1]),:]
 
@@ -55,8 +58,23 @@ dys[dys.<=0] = minimum(dys[dys.>0])
 
 post = Kalman.CARMAKalmanPosterior(ts, ys, dys, p, q)
 
-nest_state = EnsembleNest.NestState(x -> Kalman.log_likelihood(post, x), x -> Kalman.log_prior(post, x), Kalman.init(post, nlive), nmcmc)
+function logl(x)
+    Kalman.log_likelihood(post, x)
+end
+function logp(x)
+    Kalman.log_prior(post, x)
+end
 
-EnsembleNest.run!(nest_state, 0.1)
+if ispath(ckpt_file)
+    nest_state = open(deserialize, ckpt_file, "r")
+else
+    nest_state = EnsembleNest.NestState(logl, logp, Kalman.init(post, nlive), nmcmc)
+end
 
-open(stream -> serialize(stream, (post, nest_state)), "state-$(p)-$(q).dat", "w")
+EnsembleNest.run!(nest_state, 0.1, ckpt_file=ckpt_file)
+
+open(stream -> serialize(stream, (post, nest_state)), outfile, "w")
+
+if ispath(ckpt_file)
+    rm(ckpt_file)
+end
