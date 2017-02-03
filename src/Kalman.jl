@@ -350,7 +350,7 @@ function advance!(filt::CARMAKalmanFilter, dt::Float64)
             filt.vx[i,j] = filt.vxtemp[i,j]
         end
     end
-    
+
     filt
 end
 
@@ -456,6 +456,35 @@ function whiten(filt::CARMAKalmanFilter, ts, ys, dys)
     zs
 end
 
+function draw_and_collapse!(filt::CARMAKalmanFilter)
+    nd = size(filt.x, 1)
+    try
+        for i in 1:nd
+            filt.vx[i,i] = real(filt.vx[i,i]) # Fix a roundoff error problem?
+        end
+        L = ctranspose(chol(Hermitian(filt.vx)))
+        filt.x = filt.x + L*randn(nd)
+        filt.vx = zeros(Complex128, (nd, nd))
+    catch e
+        if isa(e, Base.LinAlg.PosDefException)
+            F = eigfact(filt.vx)
+            for i in eachindex(F[:values])
+                l = real(F[:values][i])
+                v = F[:vectors][:,i]
+
+                if l < 0.0
+                    l = 0.0
+                end
+                
+                filt.x = filt.x + sqrt(l)*randn()*v
+            end
+            filt.vx = zeros(Complex128, (nd, nd))
+        else
+            rethrow()
+        end
+    end
+end
+
 function generate(filt::CARMAKalmanFilter, ts, dys)
     n = size(ts, 1)
     nd = size(filt.x, 1)
@@ -466,25 +495,8 @@ function generate(filt::CARMAKalmanFilter, ts, dys)
     
     for i in 1:n
         # Draw a new state
-        try 
-            L = chol(filt.vx, Val{:L})
-            filt.x = filt.x + L*randn(nd)
-            filt.vx = zeros(Complex128, (nd, nd))
-        catch e
-            if isa(e, Base.LinAlg.PosDefException)
-                F = eigfact(filt.vx)
-                for i in eachindex(F[:values])
-                    l = F[:values][i]
-                    v = F[:vectors][:,i]
-
-                    filt.x = filt.x + real(sqrt(l)*randn()*v)
-                end
-                filt.vx = zeros(Complex128, (nd, nd))
-            else
-                rethrow()
-            end
-        end
-
+        draw_and_collapse!(filt)
+        
         y, _ = predict(filt)
 
         ys[i] = y + dys[i]*randn()
@@ -606,156 +618,6 @@ function raw_carma_log_likelihood(ts, ys, dys, mu, sigma, arroots, maroots)
     end
 
     -0.5*n*log(2*pi) - logdet - 0.5*dot(zs, F \ zs)
-end
-
-type CARMASqrtKalmanFilter
-    mu::Float64
-    sig::Float64
-    x::Array{Complex128, 1}
-    sx::Array{Complex128, 2}
-    v::Array{Complex128, 2}
-    arroots::Array{Complex128, 1}
-    b::Array{Complex128, 2}
-end
-
-function CARMASqrtKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex128, 1}, maroots::Array{Complex128, 1})
-    filt = CARMAKalmanFilter(mu, sigma, arroots, maroots)
-
-    CARMASqrtKalmanFilter(mu, filt.sig, filt.x, chol(filt.vx, Val{:L}), filt.v, filt.arroots, filt.b)
-end
-
-function reset!(filt::CARMASqrtKalmanFilter)
-    p = size(filt.x, 1)
-    filt.x = zeros(Complex128, p)
-    filt.sx = chol(filt.v, Val{:L})
-
-    filt
-end
-
-function predict(filt::CARMASqrtKalmanFilter)
-    yp = real(filt.b*filt.x) + filt.mu
-    vyp = real(filt.b*filt.sx*filt.sx'*filt.b')
-
-    yp[1], vyp[1,1]
-end
-
-# The following comes from
-#
-# Verhaegen, M., & Van Dooren, P. (1986). Numerical aspects of
-# different Kalman filter implementations. IEEE Transactions on
-# Automatic Control, 31(10),
-# 907–917. http://doi.org/10.1109/TAC.1986.1104128
-#
-# which describes a combined observe and advance step in terms of the
-# a triangularisation of a single matrix involving the measurement
-# uncertainty, the evolution matrix, and the error term.
-function observe_advance!(filt::CARMASqrtKalmanFilter, dt, y, dy)
-    p = size(filt.x, 1)
-
-    A = zeros(Complex128, p)
-    for i in 1:p
-        A[i] = exp(dt*filt.arroots[i])
-    end
-
-    B = copy(filt.v)
-    for j in 1:p
-        for i in 1:p
-            B[i,j] = filt.v[i,j] - A[i]*filt.v[i,j]*conj(A[j])
-        end
-    end
-    Q = B 
-    try
-        Q = chol(B, Val{:L})
-    catch ex
-        if isa(ex, Base.LinAlg.PosDefException)
-            x = maximum(abs(diag(B)))
-            for i in 1:p
-                B[i,i] += 1e-8*x
-            end
-            Q = chol(B, Val{:L})
-        else
-            throw(ex)
-        end
-    end
-
-    M = zeros(Complex128, (p+1, 2*p+1))
-    M[1,1] = dy
-    # M[1,2:p+1] = filt.b*filt.sx
-    for j in 1:p
-        for i in 1:p
-            M[1,j+1] += filt.b[i]*filt.sx[i,j]
-        end
-    end
-    # M[2:p+1, 2:p+1] = A*filt.sx
-    for j in 1:p
-        for i in 1:p
-            M[i+1, j+1] = A[i]*filt.sx[i,j]
-        end
-    end
-    M[2:p+1, p+2:2*p+1] = Q
-
-    M = M'
-    q, r = qr(M)
-    r = r'
-
-    #Re = r[1,1]
-    #g = r[2:end, 1]
-    #sx = r[2:end, 2:p+1]
-
-    yp = filt.mu
-    for i in 1:p
-        yp += filt.b[i]*filt.x[i]
-    end
-    # x = A*x + g/Re*(y - yp)
-    for i in 1:p
-        filt.x[i] = A[i]*filt.x[i] + r[i+1,1]/r[1,1]*(y - yp)
-    end
-    filt.sx = r[2:end, 2:p+1]
-
-    filt
-end
-
-function whiten(filt::CARMASqrtKalmanFilter, ts, ys, dys)
-    n = size(ts, 1)
-
-    wys = zeros(n)
-
-    reset!(filt)
-    
-    for i in 1:n
-        yp, vyp = predict(filt)
-
-        wys[i] = (ys[i] - yp)/sqrt(vyp)
-
-        if i < n
-            observe_advance!(filt, ts[i+1]-ts[i], ys[i], dys[i])
-        end
-    end
-
-    wys
-end
-
-function log_likelihood(filt::CARMASqrtKalmanFilter, ts, ys, dys)
-    n = size(ts, 1)
-
-    reset!(filt)
-
-    ll = -0.5*n*log(2*pi)
-
-    for i in 1:n
-        yp, dyp = predict(filt)
-
-        s2 = dyp + dys[i]*dys[i]
-        
-        ll -= 0.5*log(s2)
-        ll -= 0.5*(ys[i]-yp)*(ys[i]-yp)/s2
-
-        if i < n
-            observe_advance!(filt, ts[i+1]-ts[i], ys[i], dys[i])
-        end
-    end
-
-    ll
 end
 
 type CARMAKalmanPosterior
@@ -1282,6 +1144,58 @@ function predict(post, p, ts::Array{Float64, 1})
     ys_out[size(post.ts,1)+1:end], vys_out[size(post.ts,1)+1:end]    
 end
 
+"""
+    draw_extrapolation(post, p_or_x, ts, dys)
+
+Produce an extrapolation of the process with parameters `p_or_x`
+fitted to the data in `post` at the times `ts` and with reported
+observational errors `dys`.
+
+Note that the true observational uncertainty is scaled by the `nu`
+parameter: `dys_true = dys*p.nu`.
+
+`p_or_x` can be either an array or a parameter object.
+"""
+function draw_extrapolation(post::CARMAKalmanPosterior, x::Array{Float64, 1}, ts::Array{Float64, 1}, dys::Array{Float64, 1})
+    draw_extrapolation(post, to_params(post, x), ts, dys)
+end
+
+function draw_extrapolation(post::CARMAKalmanPosterior, p::CARMAPosteriorParams, ts::Array{Float64, 1}, dys::Array{Float64, 1})
+    @assert all(ts .> maximum(post.ts))
+    @assert issorted(ts)
+
+    
+    filt = CARMAKalmanFilter(post, p)
+
+    reset!(filt)
+
+    # First, fit the filter to the observed data; by the end of the
+    # loop, the filter has incorporated each data point in post.
+    for i in eachindex(post.ts)
+        observe!(filt, post.ys[i], p.nu*post.dys[i])
+
+        if i < size(post.ts,1)
+            advance!(filt, post.ts[i+1]-post.ts[i])
+        end
+    end
+
+    # Now run the filter forward through the ts
+    tcurrent = post.ts[end]
+    ys_out = zeros(size(ts, 1))
+    for i in eachindex(ts)
+        advance!(filt, ts[i] - tcurrent)
+        tcurrent = ts[i]
+
+        draw_and_collapse!(filt)
+
+        y, _ = predict(filt)
+
+        ys_out[i] = y + p.nu*dys[i]*randn()
+    end
+
+    ys_out
+end
+
 type MultiSegmentCARMAKalmanPosterior
     ts::Array{Array{Float64, 1}, 1}
     ys::Array{Array{Float64, 1}, 1}
@@ -1603,7 +1517,7 @@ function predict(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1}, t
 end
 
 function predict(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams, ts::Array{Float64, 1})
-    allts, allys, alldys, rinds = alltsysdys(post)
+    allts, allys, alldys, rinds = alltsysdys(post, p)
 
     singlepost = CARMAKalmanPosterior(allts, allys, alldys, post.p, post.q)
     singleparms = to_params(singlepost, zeros(nparams(singlepost)))
@@ -1616,5 +1530,30 @@ function predict(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPos
 
     predict(singlepost, singleparams, ts)
 end
+
+function draw_extrapolation(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1}, ts::Array{Float64, 1}, dys::Array{Float64, 1})
+    draw_extrapolation(post, to_params(post, x), ts, dys)
+end
+
+"""
+If `post` is a `MultiSegmentCARMAKalmanPosterior`, then the returned
+extrapolation will have `mu = 0` and `nu = 1`.  If a different mean
+and error scaling are desired they should be applied separately.
+"""
+function draw_extrapolation(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams, ts::Array{Float64, 1}, dys::Array{Float64, 1})
+    allts, allys, alldys, rinds = alltsysdys(post, p)
+
+    singlepost = CARMAKalmanPosterior(allts, allys, alldys, post.p, post.q)
+    singleparams = to_params(singlepost, zeros(nparams(singlepost)))
+
+    singleparams.mu = 0.0
+    singleparams.sigma = p.sigma
+    singleparams.nu = 1.0
+    singleparams.arroots = p.arroots
+    singleparams.maroots = p.maroots
+
+    draw_extrapolation(singlepost, singleparams, ts, dys)
+end
+
 
 end
