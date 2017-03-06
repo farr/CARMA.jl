@@ -221,8 +221,6 @@ function psd(filt::AR1KalmanFilter, fs::Array{Float64, 1})
     4.0*filt.tau ./ (1.0 + (2.0*pi*filt.tau*fs).^2)
 end
 
-
-
 type CARMAKalmanFilter
     mu::Float64
     sig::Float64
@@ -967,6 +965,9 @@ function whiten(post::CARMAKalmanPosterior, p::CARMAPosteriorParams)
     whiten(filt, post.ts, post.ys, post.dys*p.nu)
 end
 
+""" Returns `(r, dr)` the residual and standard deviation on the
+residual for the given parameters.
+"""
 function residuals(post::CARMAKalmanPosterior, p::Array{Float64, 1})
     residuals(post, to_params(post, p))
 end
@@ -1009,6 +1010,11 @@ function psdfreq(post::CARMAKalmanPosterior; nyquist_factor=1.0, oversample_fact
     collect(df:df:fmax)
 end
 
+""" Returns the one-sided PSD of the CARMA process in `post` described
+by parameters `x` at the frequencies `fs`.  
+
+The PSD is normalised so that ``\\int_{0}^{\\infty} df \\, P(f) =
+\\sigma^2``, the variance of the process.  """
 function psd(post::CARMAKalmanPosterior, x::Array{Float64, 2}, fs::Array{Float64, 1})
     psds = [psd(post, x[:,i], fs) for i in 1:size(x,2)]
     hcat(psds...)
@@ -1030,7 +1036,7 @@ function psd(post::CARMAKalmanPosterior, p::CARMAPosteriorParams, fs::Array{Floa
         numer = polyeval(p.maroots, tpif) / polyeval(p.maroots, 0.0+0.0*1im)
         denom = polyeval(p.arroots, tpif)
 
-        psd[i] = filt.sig*filt.sig*abs2(numer)/abs2(denom)
+        psd[i] = 2.0*filt.sig*filt.sig*abs2(numer)/abs2(denom) # 2.0 for one-sided PSD.
     end
 
     psd
@@ -1078,6 +1084,8 @@ function qfactors(post::CARMAKalmanPosterior, x::Array{Float64, 2})
     hcat(qs...)
 end
 
+""" Return the predicted state of the underlying process and the
+variance in the prediction at the given times.  """
 function predict(post::CARMAKalmanPosterior, x::Array{Float64, 1}, t::Float64)
     predict(post, to_params(post, x), t)
 end
