@@ -34,7 +34,7 @@ function reset!(filt::CeleriteKalmanFilter)
     filt
 end
 
-function CelerateKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates::Array{Float64, 1}, osc_rms::Array{Float64, 1}, osc_freqs::Array{Float64, 1}, osc_Qs::Array{Float64, 1})
+function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates::Array{Float64, 1}, osc_rms::Array{Float64, 1}, osc_freqs::Array{Float64, 1}, osc_Qs::Array{Float64, 1})
     ndrw = size(drw_rms,1)
     nosc = size(osc_rms,1)
     dim = ndrw + 2*nosc
@@ -127,10 +127,10 @@ function CelerateKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
         ii += 2
     end
 
-    CelerateKalmanFilter(mu, zeros(Complex128, dim), V, zeros(Complex128, dim), zeros(Complex128, dim), b, roots, copy(V), zeros(Complex128, (dim,dim)))
+    CeleriteKalmanFilter(mu, zeros(Complex128, dim), V, zeros(Complex128, dim), zeros(Complex128, dim), b, roots, copy(V), zeros(Complex128, (dim,dim)))
 end
 
-function advance!(filt::CelerateKalmanFilter, dt::Float64)
+function advance!(filt::CeleriteKalmanFilter, dt::Float64)
     p = size(filt.x, 1)
 
     for i in 1:p
@@ -152,7 +152,7 @@ function advance!(filt::CelerateKalmanFilter, dt::Float64)
     filt
 end
 
-function observe!(filt::CelerateKalmanFilter, y::Float64, dy::Float64)
+function observe!(filt::CeleriteKalmanFilter, y::Float64, dy::Float64)
     p = size(filt.x, 1)
 
     ey, vy = predict(filt)
@@ -178,7 +178,7 @@ function observe!(filt::CelerateKalmanFilter, y::Float64, dy::Float64)
     filt
 end
 
-function predict(filt::CelerateKalmanFilter)
+function predict(filt::CeleriteKalmanFilter)
     p = size(filt.x,1)
     
     yp = filt.mu
@@ -196,7 +196,7 @@ function predict(filt::CelerateKalmanFilter)
     yp, vyp
 end
 
-function whiten(filt::CelerateKalmanFilter, ts, ys, dys)
+function whiten(filt::CeleriteKalmanFilter, ts, ys, dys)
     n = size(ts, 1)
 
     reset!(filt)
@@ -217,7 +217,7 @@ function whiten(filt::CelerateKalmanFilter, ts, ys, dys)
     zs
 end
 
-function draw_and_collapse!(filt::CelerateKalmanFilter)
+function draw_and_collapse!(filt::CeleriteKalmanFilter)
     nd = size(filt.x, 1)
     try
         for i in 1:nd
@@ -246,7 +246,7 @@ function draw_and_collapse!(filt::CelerateKalmanFilter)
     end
 end
 
-function generate(filt::CelerateKalmanFilter, ts, dys)
+function generate(filt::CeleriteKalmanFilter, ts, dys)
     n = size(ts, 1)
     nd = size(filt.x, 1)
 
