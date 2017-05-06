@@ -226,12 +226,12 @@ type CARMAKalmanFilter
     sig::Float64
     x::Array{Complex128,1}
     vx::Array{Complex128, 2}
+    K::Array{Complex128, 1}
+    lambda::Array{Complex128, 1}
+    vxtemp::Array{Complex128, 2}
     v::Array{Complex128, 2}
     arroots::Array{Complex128, 1}
     b::Array{Complex128, 2}
-    vxtemp::Array{Complex128, 2}
-    xtemp::Array{Complex128, 1}
-    lambda::Array{Complex128, 1}
     tscale::Float64
 end
 
@@ -240,6 +240,7 @@ function reset!(filt::CARMAKalmanFilter)
 
     filt.x = zeros(Complex128, p)
     filt.vx = copy(filt.v)
+    filt.K = zeros(Complex128, p)
 
     filt
 end
@@ -327,31 +328,25 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
 
     sig = sqrt(real(s2))
 
-    CARMAKalmanFilter(mu, sig, zeros(Complex128, p), V, copy(V), copy(arroots), b, zeros(Complex128, (p,p)), zeros(Complex128, p), zeros(Complex128, p), tscale)
+    CARMAKalmanFilter(mu, sig, zeros(Complex128, p), V, zeros(Complex128, p), zeros(Complex128, p), zeros(Complex128, (p,p)), copy(V), copy(arroots), b, tscale)
 end
 
 function advance!(filt::CARMAKalmanFilter, dt::Float64)
     p = size(filt.x, 1)
 
     for i in 1:p
-        filt.lambda[i] = exp(filt.arroots[i]*dt/filt.tscale)
+        x = filt.arroots[i]*dt/filt.tscale
+        filt.lambda[i] = exp(x)
     end
     lam = filt.lambda
-
+        
     for i in 1:p
-        filt.xtemp[i] = lam[i]*filt.x[i]
+        filt.x[i] = lam[i]*filt.x[i]
     end
 
     for j in 1:p
         for i in 1:p
-            filt.vxtemp[i,j] = lam[i]*conj(lam[j])*filt.vx[i,j] + filt.v[i,j]*(one(lam[i])-lam[i]*conj(lam[j]))
-        end
-    end
-
-    for j in 1:p
-        filt.x[j] = filt.xtemp[j]
-        for i in 1:p
-            filt.vx[i,j] = filt.vxtemp[i,j]
+            filt.vx[i,j] = lam[i]*conj(lam[j])*(filt.vx[i,j] - filt.v[i,j]) + filt.v[i,j]
         end
     end
 
@@ -361,60 +356,23 @@ end
 function observe!(filt::CARMAKalmanFilter, y::Float64, dy::Float64)
     p = size(filt.x, 1)
 
-    y = y - filt.mu
-
-    dy2 = dy*dy
-
-    # The complicated series below reproduces the Morrison-Woodbury
-    # formula for the update step for V:
-    #
-    # V -> (V^{-1} + b^* b / dy2)^{-1}
-    #
-    # SMW:
-    # V -> V - V b^* (dy2 + b V b^*)^{-1} b V
-
-    c = complex(dy2)
-    for i in 1:p
-        for j in 1:p
-            c += filt.b[1,i]*filt.vx[i,j]*conj(filt.b[1,j])
-        end
-    end
-    c = one(c)/c
+    ey, vy = predict(filt)
+    vy += dy*dy
 
     for i in 1:p
-        filt.lambda[i] = zero(filt.lambda[i])
-        filt.xtemp[i] = zero(filt.xtemp[i])
+        filt.K[i] = zero(filt.K[i])
         for j in 1:p
-            filt.lambda[i] += filt.vx[i,j]*conj(filt.b[1,j])
-            filt.xtemp[i] += filt.b[1,j]*filt.vx[j,i]
-        end
-    end
-    
-    for i in 1:p
-        for j in 1:p
-            filt.vxtemp[i,j] = filt.vx[i,j] - filt.lambda[i]*filt.xtemp[j]*c
+            filt.K[i] += filt.vx[i,j]*conj(filt.b[j])/vy
         end
     end
 
-    # Now we work out the algebra for
-    #
-    # x -> Vnew b* y/dy2 + Vnew V^{-1} x
-    #
-    # or
-    #
-    # x -> Vnew b* y/dy2 + x - V b* b x / c
-
-    bdx = zero(filt.b[1,1])
     for i in 1:p
-        bdx += filt.b[1,i]*filt.x[i]
+        filt.x[i] = filt.x[i] + (y - ey)*filt.K[i]
     end
 
-    s = y/dy2
-    for i in 1:p
-        filt.x[i] = filt.x[i] - filt.lambda[i]*bdx * c
-        for j in 1:p
-            filt.x[i] += filt.vxtemp[i,j]*conj(filt.b[1,j])*s
-            filt.vx[i,j] = filt.vxtemp[i,j]
+    for j in 1:p
+        for i in 1:p
+            filt.vx[i,j] = filt.vx[i,j] - vy*filt.K[i]*conj(filt.K[j])
         end
     end
 
