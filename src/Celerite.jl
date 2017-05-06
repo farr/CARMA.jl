@@ -42,8 +42,8 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
     oscroots = zeros(Complex128, nosc)
     for i in 1:nosc
         omega0 = 2.0*pi*osc_freqs[i]
-        tau = omega0/(2.0*osc_Qs[i])
-        oscroots[i] = -tau + omega0*1im
+        alpha = omega0/(2.0*osc_Qs[i])
+        oscroots[i] = -alpha + omega0*1im
     end
 
     roots = zeros(Complex128, dim)
@@ -108,21 +108,32 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
 
     V = zeros(Complex128, (dim,dim))
 
-    for j in 1:p
-        for i in 1:p
-            V[i,j] = -J[i]*conj(J[j])/(roots[i] + conj(roots[j]))
+    ii = 1
+    for i in 1:ndrw
+        V[ii,ii] = -J[ii]*conj(J[ii])/(roots[ii] + conj(roots[ii]))
+        ii += 1
+    end
+
+    for i in 1:nosc
+        for j in 0:1
+            for k in 0:1
+                V[ii+j, ii+k] = -J[ii+j]*conj(J[ii+k])/(roots[ii+j] + conj(roots[ii+k]))
+            end
         end
+        ii += 2
     end
 
     ii = 1
     for i in 1:ndrw
         s2 = b[1,ii]*V[ii,ii]*conj(b[1,ii])
+        s2 = s2[1]
         V[ii,ii] *= drw_rms[i]*drw_rms[i]/s2
         ii += 1
     end
 
     for i in 1:nosc
-        s2 = b[1,ii:ii+1]*V[ii:ii+1,ii:ii+1]*b[1,ii:ii+1]'
+        s2 = b[:,ii:ii+1]*V[ii:ii+1,ii:ii+1]*b[:,ii:ii+1]'
+        s2 = s2[1]
         V[ii:ii+1, ii:ii+1] *= osc_rms[i]*osc_rms[i]/s2
         ii += 2
     end
@@ -145,7 +156,7 @@ function advance!(filt::CeleriteKalmanFilter, dt::Float64)
 
     for j in 1:p
         for i in 1:p
-            filt.vx[i,j] = lam[i]*conj(lam[j])*(filt.vx[i,j] - filt.v[i,j]) + filt.v[i,j]
+            filt.Vx[i,j] = lam[i]*conj(lam[j])*(filt.Vx[i,j] - filt.V[i,j]) + filt.V[i,j]
         end
     end
 
@@ -161,7 +172,7 @@ function observe!(filt::CeleriteKalmanFilter, y::Float64, dy::Float64)
     for i in 1:p
         filt.K[i] = zero(filt.K[i])
         for j in 1:p
-            filt.K[i] += filt.vx[i,j]*conj(filt.b[j])/vy
+            filt.K[i] += filt.Vx[i,j]*conj(filt.b[j])/vy
         end
     end
 
@@ -171,7 +182,7 @@ function observe!(filt::CeleriteKalmanFilter, y::Float64, dy::Float64)
 
     for j in 1:p
         for i in 1:p
-            filt.vx[i,j] = filt.vx[i,j] - vy*filt.K[i]*conj(filt.K[j])
+            filt.Vx[i,j] = filt.Vx[i,j] - vy*filt.K[i]*conj(filt.K[j])
         end
     end
 
@@ -189,7 +200,7 @@ function predict(filt::CeleriteKalmanFilter)
     vyp = 0.0
     for i in 1:p
         for j in 1:p
-            vyp += real(filt.b[1,i]*filt.vx[i,j]*conj(filt.b[1,j]))
+            vyp += real(filt.b[1,i]*filt.Vx[i,j]*conj(filt.b[1,j]))
         end
     end
 
@@ -221,14 +232,14 @@ function draw_and_collapse!(filt::CeleriteKalmanFilter)
     nd = size(filt.x, 1)
     try
         for i in 1:nd
-            filt.vx[i,i] = real(filt.vx[i,i]) # Fix a roundoff error problem?
+            filt.Vx[i,i] = real(filt.Vx[i,i]) # Fix a roundoff error problem?
         end
-        L = ctranspose(chol(Hermitian(filt.vx)))
+        L = ctranspose(chol(Hermitian(filt.Vx)))
         filt.x = filt.x + L*randn(nd)
-        filt.vx = zeros(Complex128, (nd, nd))
+        filt.Vx = zeros(Complex128, (nd, nd))
     catch e
         if isa(e, Base.LinAlg.PosDefException)
-            F = eigfact(filt.vx)
+            F = eigfact(filt.Vx)
             for i in eachindex(F[:values])
                 l = real(F[:values][i])
                 v = F[:vectors][:,i]
@@ -239,7 +250,7 @@ function draw_and_collapse!(filt::CeleriteKalmanFilter)
                 
                 filt.x = filt.x + sqrt(l)*randn()*v
             end
-            filt.vx = zeros(Complex128, (nd, nd))
+            filt.Vx = zeros(Complex128, (nd, nd))
         else
             rethrow()
         end
