@@ -232,6 +232,7 @@ type CARMAKalmanFilter
     vxtemp::Array{Complex128, 2}
     xtemp::Array{Complex128, 1}
     lambda::Array{Complex128, 1}
+    tscale::Float64
 end
 
 function reset!(filt::CARMAKalmanFilter)
@@ -289,6 +290,11 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
     @assert all(real(arroots) .< 0.0) "AR roots must have negative real part: $arroots"
     @assert all(real(maroots) .< 0.0) "MA roots must have negative real part: $maroots"
 
+    tscale = exp(-mean(log(abs(arroots)))) # Try to stabilise the variance computation
+
+    arroots = arroots*tscale
+    maroots = maroots*tscale
+    
     beta = poly(maroots)
     beta /= beta[1]
     b = cat(1, beta, zeros(p-q-1))
@@ -321,14 +327,14 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
 
     sig = sqrt(real(s2))
 
-    CARMAKalmanFilter(mu, sig, zeros(Complex128, p), V, copy(V), copy(arroots), b, zeros(Complex128, (p,p)), zeros(Complex128, p), zeros(Complex128, p))
+    CARMAKalmanFilter(mu, sig, zeros(Complex128, p), V, copy(V), copy(arroots), b, zeros(Complex128, (p,p)), zeros(Complex128, p), zeros(Complex128, p), tscale)
 end
 
 function advance!(filt::CARMAKalmanFilter, dt::Float64)
     p = size(filt.x, 1)
 
     for i in 1:p
-        filt.lambda[i] = exp(filt.arroots[i]*dt)
+        filt.lambda[i] = exp(filt.arroots[i]*dt/filt.tscale)
     end
     lam = filt.lambda
 
@@ -1528,7 +1534,7 @@ function predict(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPos
     allts, allys, alldys, rinds = alltsysdys(post, p)
 
     singlepost = CARMAKalmanPosterior(allts, allys, alldys, post.p, post.q)
-    singleparms = to_params(singlepost, zeros(nparams(singlepost)))
+    singleparams = to_params(singlepost, zeros(nparams(singlepost)))
 
     singleparams.mu = 0.0
     singleparams.sigma = p.sigma
