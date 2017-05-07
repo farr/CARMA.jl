@@ -150,7 +150,7 @@ function advance!(filt::CeleriteKalmanFilter, dt::Float64)
     end
     lam = filt.lambda
 
-        for i in 1:p
+    for i in 1:p
         filt.x[i] = lam[i]*filt.x[i]
     end
 
