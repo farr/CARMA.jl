@@ -1040,7 +1040,7 @@ function qfactors(post::CARMAKalmanPosterior, p::CARMAPosteriorParams)
     fs = frequencies(post, p)
     dr = drates(post, p)
 
-    fs ./ dr
+    pi*fs ./ dr
 end
 
 function qfactors(post::CARMAKalmanPosterior, x::Array{Float64, 2})
@@ -1460,7 +1460,7 @@ function qfactors(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPo
     fs = frequencies(post, p)
     dr = drates(post, p)
 
-    fs ./ dr
+    pi*fs ./ dr
 end
 
 function qfactors(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 2})
