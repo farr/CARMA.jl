@@ -163,7 +163,9 @@ function advance!(filt::CeleriteKalmanFilter, dt::Float64)
 
     for j in 1:p
         for i in 1:p
-            filt.Vx[i,j] = lam[i]*conj(lam[j])*(filt.Vx[i,j] - filt.V[i,j]) + filt.V[i,j]
+            a::Complex128 = lam[i]*conj(lam[j])
+            b::Complex128 = a*(filt.Vx[i,j] - filt.V[i,j])
+            filt.Vx[i,j] = b + filt.V[i,j]
         end
     end
 
@@ -189,7 +191,9 @@ function observe!(filt::CeleriteKalmanFilter, y::Float64, dy::Float64)
 
     for j in 1:p
         for i in 1:p
-            filt.Vx[i,j] = filt.Vx[i,j] - vy*filt.K[i]*conj(filt.K[j])
+            a::Complex128 = vy*filt.K[i]
+            b::Complex128 = a*conj(filt.K[j])
+            filt.Vx[i,j] = filt.Vx[i,j] - b
         end
     end
 
@@ -207,7 +211,9 @@ function predict(filt::CeleriteKalmanFilter)
     vyp = 0.0
     for i in 1:p
         for j in 1:p
-            vyp += real(filt.b[1,i]*filt.Vx[i,j]*conj(filt.b[1,j]))
+            a::Complex128 = filt.b[1,i]*filt.Vx[i,j]
+            b::Complex128 = a*conj(filt.b[1,j])
+            vyp = vyp + real(b)
         end
     end
 
