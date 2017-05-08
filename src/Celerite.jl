@@ -34,10 +34,8 @@ function reset!(filt::CeleriteKalmanFilter)
     filt
 end
 
-function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates::Array{Float64, 1}, osc_rms::Array{Float64, 1}, osc_freqs::Array{Float64, 1}, osc_Qs::Array{Float64, 1})
-    ndrw = size(drw_rms,1)
-    nosc = size(osc_rms,1)
-    dim = ndrw + 2*nosc
+function osc_roots(osc_freqs::Array{Float64, 1}, osc_Qs::Array{Float64, 1})
+    nosc = size(osc_freqs, 1)
 
     oscroots = zeros(Complex128, nosc)
     for i in 1:nosc
@@ -45,6 +43,15 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
         alpha = omega0/(2.0*osc_Qs[i])
         oscroots[i] = -alpha + omega0*1im
     end
+    oscroots
+end
+
+function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates::Array{Float64, 1}, osc_rms::Array{Float64, 1}, osc_freqs::Array{Float64, 1}, osc_Qs::Array{Float64, 1})
+    ndrw = size(drw_rms,1)
+    nosc = size(osc_rms,1)
+    dim = ndrw + 2*nosc
+
+    oscroots = osc_roots(osc_freqs, osc_Qs)
 
     roots = zeros(Complex128, dim)
     ii = 1
@@ -172,7 +179,7 @@ function observe!(filt::CeleriteKalmanFilter, y::Float64, dy::Float64)
     for i in 1:p
         filt.K[i] = zero(filt.K[i])
         for j in 1:p
-            filt.K[i] += filt.Vx[i,j]*conj(filt.b[j])/vy
+            filt.K[i] += filt.Vx[i,j]*conj(filt.b[1,j])/vy
         end
     end
 
@@ -239,6 +246,7 @@ function draw_and_collapse!(filt::CeleriteKalmanFilter)
         filt.Vx = zeros(Complex128, (nd, nd))
     catch e
         if isa(e, Base.LinAlg.PosDefException)
+            warn("Current variance matrix not pos. def.---may be roundoff problem in generation.")
             F = eigfact(filt.Vx)
             for i in eachindex(F[:values])
                 l = real(F[:values][i])
@@ -311,4 +319,38 @@ function log_likelihood(filt, ts, ys, dys)
     ll
 end
 
+function raw_covariance(ts::Array{Float64, 1}, dys::Array{Float64, 1}, drw_rms::Array{Float64, 1}, drw_rates::Array{Float64, 1}, osc_rms::Array{Float64, 1}, osc_freqs::Array{Float64, 1}, osc_Qs::Array{Float64,1})
+    N = size(ts, 1)
+    ndrw = size(drw_rms,1)
+    nosc = size(osc_rms,1)
+
+    cov = zeros((N,N))
+    dts = zeros((N,N))
+
+    oscroots = osc_roots(osc_freqs, osc_Qs)
+    
+    for j in 1:N
+        for i in 1:N
+            dts[i,j] = abs(ts[i] - ts[j])
+        end
+    end
+    
+    for i in 1:ndrw
+        cov += drw_rms[i]*drw_rms[i]*exp(-drw_rates[i]*dts)
+    end
+
+    for i in 1:nosc
+        A = 1.0 / (-4.0*real(oscroots[i])*(conj(oscroots[i]) - oscroots[i])*oscroots[i])
+        B = 1.0 / (-4.0*real(oscroots[i])*(oscroots[i] - conj(oscroots[i]))*conj(oscroots[i]))
+
+        s2 = osc_rms[i]*osc_rms[i] / (A+B)
+        cov += real(s2*(A*exp(oscroots[i]*dts) + B*exp(conj(oscroots[i])*dts)))
+    end
+
+    for i in 1:N
+        cov[i,i] += dys[i]*dys[i]
+    end
+
+    cov
+end
 end
