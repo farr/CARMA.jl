@@ -24,6 +24,11 @@ type CeleriteKalmanFilter
     roots::Array{Complex128, 1} # Eigenvalues of the ODEs
     V::Array{Complex128, 2} # Stationary covariance
     Vtemp::Array{Complex128, 2} # Storage for matrix ops
+    drw_rms::Array{Float64, 1}
+    drw_rates::Array{Float64, 1}
+    osc_rms::Array{Float64, 1}
+    osc_freqs::Array{Float64, 1}
+    osc_Qs::Array{Float64, 1}
 end
 
 function reset!(filt::CeleriteKalmanFilter)
@@ -145,7 +150,7 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
         ii += 2
     end
 
-    CeleriteKalmanFilter(mu, zeros(Complex128, dim), V, zeros(Complex128, dim), zeros(Complex128, dim), b, roots, copy(V), zeros(Complex128, (dim,dim)))
+    CeleriteKalmanFilter(mu, zeros(Complex128, dim), V, zeros(Complex128, dim), zeros(Complex128, dim), b, roots, copy(V), zeros(Complex128, (dim,dim)), drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
 end
 
 function advance!(filt::CeleriteKalmanFilter, dt::Float64)
@@ -359,4 +364,31 @@ function raw_covariance(ts::Array{Float64, 1}, dys::Array{Float64, 1}, drw_rms::
 
     cov
 end
+
+function psd_drw(rms_amp, damp_rate, fs)
+    4.0*damp_rate*rms_amp*rms_amp./abs2(2.0*pi*1im*fs + damp_rate)
+end
+
+function psd_osc(rms_amp, freq, Q, fs)
+    r1 = osc_roots([freq], [Q])[1]
+    r2 = conj(r1)
+    norm = 1.0/real(2.0*r1*(r1-r2)*(r1+r2))
+
+    rms_amp*rms_amp/norm./abs2((2.0*pi*1im*fs - r1).*(2.0*pi*1im*fs - r2))
+end
+
+function psd(filt::CeleriteKalmanFilter, fs::Array{Float64, 1})
+    Pfs = zeros(size(fs,1))
+
+    for i in 1:size(filt.drw_rms,1)
+        Pfs += psd_drw(filt.drw_rms[i], filt.drw_rates[i], fs)
+    end
+
+    for i in 1:size(filt.osc_rms,1)
+        Pfs += psd_osc(filt.osc_rms[i], filt.osc_freqs[i], filt.osc_Qs[i], fs)
+    end
+
+    Pfs
+end
+
 end
