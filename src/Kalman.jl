@@ -331,7 +331,7 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
     CARMAKalmanFilter(mu, sig, zeros(Complex128, p), V, zeros(Complex128, p), zeros(Complex128, p), zeros(Complex128, (p,p)), copy(V), copy(arroots), b, tscale)
 end
 
-function advance!(filt::CARMAKalmanFilter, dt::Float64)
+@inbounds function advance!(filt::CARMAKalmanFilter, dt::Float64)
     p = size(filt.x, 1)
 
     for i in 1:p
@@ -353,7 +353,7 @@ function advance!(filt::CARMAKalmanFilter, dt::Float64)
     filt
 end
 
-function observe!(filt::CARMAKalmanFilter, y::Float64, dy::Float64)
+@inbounds function observe!(filt::CARMAKalmanFilter, y::Float64, dy::Float64)
     p = size(filt.x, 1)
 
     ey, vy = predict(filt)
@@ -379,7 +379,7 @@ function observe!(filt::CARMAKalmanFilter, y::Float64, dy::Float64)
     filt
 end
 
-function predict(filt::CARMAKalmanFilter)
+@inbounds function predict(filt::CARMAKalmanFilter)
     p = size(filt.x,1)
     
     yp = filt.mu

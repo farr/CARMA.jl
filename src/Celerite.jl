@@ -153,7 +153,7 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
     CeleriteKalmanFilter(mu, zeros(Complex128, dim), V, zeros(Complex128, dim), zeros(Complex128, dim), b, roots, copy(V), zeros(Complex128, (dim,dim)), drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
 end
 
-function advance!(filt::CeleriteKalmanFilter, dt::Float64)
+@inbounds function advance!(filt::CeleriteKalmanFilter, dt::Float64)
     p = size(filt.x, 1)
 
     for i in 1:p
@@ -177,7 +177,7 @@ function advance!(filt::CeleriteKalmanFilter, dt::Float64)
     filt
 end
 
-function observe!(filt::CeleriteKalmanFilter, y::Float64, dy::Float64)
+@inbounds function observe!(filt::CeleriteKalmanFilter, y::Float64, dy::Float64)
     p = size(filt.x, 1)
 
     ey, vy = predict(filt)
@@ -205,7 +205,7 @@ function observe!(filt::CeleriteKalmanFilter, y::Float64, dy::Float64)
     filt
 end
 
-function predict(filt::CeleriteKalmanFilter)
+@inbounds function predict(filt::CeleriteKalmanFilter)
     p = size(filt.x,1)
     
     yp = filt.mu
