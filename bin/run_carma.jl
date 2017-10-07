@@ -3,6 +3,7 @@ BLAS.set_num_threads(1)
 
 using Ensemble
 using CARMA
+using HDF5
 
 usage = "julia run_carma.jl DATAFILE P Q [NLIVE]"
 
@@ -22,7 +23,7 @@ end
 
 nmcmc = 128
 
-outfile = "state-$(p)-$(q).dat"
+outfile = "state-$(p)-$(q).hdf5"
 ckpt_file = "state-$(p)-$(q).ckpt"
 
 data = readdlm(datafile)
@@ -66,14 +67,26 @@ function logp(x)
 end
 
 if ispath(ckpt_file)
-    nest_state = open(deserialize, ckpt_file, "r")
+    nest_state = h5open(ckpt_file, "r") do f
+        EnsembleNest.NestState(f, logl=logl, logp=logp)
+    end
 else
     nest_state = EnsembleNest.NestState(logl, logp, Kalman.init(post, nlive), nmcmc)
 end
 
 EnsembleNest.run!(nest_state, 0.1, ckpt_file=ckpt_file)
 
-open(stream -> serialize(stream, (post, nest_state)), outfile, "w")
+h5open(outfile, "w") do f
+    ng = g_create(f, "nest_state")
+    write(ng, nest_state)
+
+    pg = g_create(f, "carma_data")
+    pg["ts", "compress", 3, "shuffle", ()] = ts
+    pg["ys", "compress", 3, "shuffle", ()] = ys
+    pg["dys", "compress", 3, "shuffle", ()] = dys
+    pg["p"] = p
+    pg["q"] = q
+end
 
 if ispath(ckpt_file)
     rm(ckpt_file)
