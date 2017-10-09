@@ -90,7 +90,7 @@ h5open(outfile, "w") do f
     pg = g_create(f, "carma_data")
     pg["p"] = p
     pg["q"] = q
-
+    pg["n"] = size(ts, 1)
     for i in eachindex(ts)
         gi = g_create(pg, "$(i)")
         gi["ts", "compress", 3, "shuffle", ()] = ts[i]
