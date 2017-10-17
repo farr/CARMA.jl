@@ -291,7 +291,7 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
     @assert all(real(arroots) .< 0.0) "AR roots must have negative real part: $arroots"
     @assert all(real(maroots) .< 0.0) "MA roots must have negative real part: $maroots"
 
-    tscale = exp(-mean(log(abs(arroots)))) # Try to stabilise the variance computation
+    tscale = exp(-mean(log.(abs.(arroots)))) # Try to stabilise the variance computation
 
     arroots = arroots*tscale
     maroots = maroots*tscale
