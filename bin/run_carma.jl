@@ -74,7 +74,7 @@ else
     nest_state = EnsembleNest.NestState(logl, logp, Kalman.init(post, nlive), nmcmc)
 end
 
-EnsembleNest.run!(nest_state, 0.1, ckpt_file=ckpt_file)
+EnsembleNest.run!(nest_state, 0.01, ckpt_file=ckpt_file)
 
 h5open(outfile, "w") do f
     ng = g_create(f, "nest_state")
