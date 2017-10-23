@@ -1178,7 +1178,7 @@ type MultiSegmentCARMAKalmanPosterior
     function MultiSegmentCARMAKalmanPosterior(ts, ys, dys, p, q)
         @assert p>0
         @assert q<p
-        @assert q>0
+        @assert q>=0
 
         new(ts, ys, dys, p, q)
     end
