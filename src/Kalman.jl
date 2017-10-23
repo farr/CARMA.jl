@@ -646,7 +646,7 @@ function to_rparams(x::Array{Complex128, 1})
     if n == 0
         rp
     elseif n == 1
-        rp = log(-real(r[1]))
+        rp = log(-real(x[1]))
     else
         for i in 1:2:n-1
             r1 = x[i]
