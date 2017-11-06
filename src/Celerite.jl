@@ -330,6 +330,34 @@ function log_likelihood(filt, ts, ys, dys)
     ll
 end
 
+function residuals(filt, ts, ys, dys)
+    n = size(ts, 1)
+
+    resid = zeros(n)
+    dresid = zeros(n)
+    
+    reset!(filt)
+    for i in 1:n
+        yp, vyp = predict(filt)
+
+        if vyp < 0.0
+            warn("Kalman filter has gone unstable!")
+            return resid, dresid
+        end
+
+        resid[i] = ys[i] - yp
+        dresid[i] = sqrt(vyp + dys[i]*dys[i])
+
+        observe!(filt, ys[i], dys[i])
+
+        if i < n
+            advance!(filt, ts[i+1]-ts[i])
+        end
+    end
+
+    resid, dresid
+end
+
 function raw_covariance(ts::Array{Float64, 1}, dys::Array{Float64, 1}, drw_rms::Array{Float64, 1}, drw_rates::Array{Float64, 1}, osc_rms::Array{Float64, 1}, osc_freqs::Array{Float64, 1}, osc_Qs::Array{Float64,1})
     N = size(ts, 1)
     ndrw = size(drw_rms,1)
