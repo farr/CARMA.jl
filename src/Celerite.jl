@@ -419,4 +419,57 @@ function psd(filt::CeleriteKalmanFilter, fs::Array{Float64, 1})
     Pfs
 end
 
+function predict(filt::CeleriteKalmanFilter, ts, ys, dys, tsp)
+    # The algorithm here is to run the filter twice over the union of
+    # the data and prediction times.  The first run is "forward" in
+    # time, and predicts at each time *before* observing the output at
+    # data times, and the second run is "backward" in time, and
+    # predicts at each time *after* observing the output at data
+    # times.  Weighted-averaging of the two runs together gives the
+    # full internal state prediction incorporating all the data at the
+    # given times.
+    
+    allts = vcat(ts, tsp)
+    obsflag = convert(Array{Bool, 1}, vcat(trues(size(ts, 1)), falses(size(tsp, 1))))
+    inds = sortperm(allts)
+    rinds = reverse(inds)
+
+    yspforward = zeros(size(allts, 1))
+    vyspforward = zeros(size(allts, 1))
+
+    reset!(filt)
+    for i in eachindex(allts)
+        yspforward[inds[i]], vyspforward[inds[i]] = predict(filt)
+
+        if obsflag[inds[i]]
+            observe!(filt, ys[inds[i]], dys[inds[i]])
+        end
+
+        if i < size(allts, 1)
+            advance!(filt, allts[inds[i+1]]-allts[inds[i]])
+        end
+    end
+
+    yspbackward = zeros(size(allts, 1))
+    vyspbackward = zeros(size(allts, 1))
+    
+    reset!(filt)
+    for i in eachindex(allts)
+        if obsflag[rinds[i]]
+            observe!(filt, ys[rinds[i]], dys[rinds[i]])
+        end
+
+        yspbackward[rinds[i]], vyspbackward[rinds[i]] = predict(filt)
+
+        if i < size(allts, 1)
+            advance!(filt, allts[rinds[i]] - allts[rinds[i+1]])
+        end
+    end
+
+    ysp = (yspforward.*vyspbackward .+ yspbackward.*vyspforward) ./ (vyspbackward .+ vyspforward)
+    vysp = 1.0./(1.0./vyspforward .+ 1.0./vyspbackward)
+
+    ysp[size(ts,1)+1:end], vysp[size(ts, 1)+1:end]
+end
+
 end
