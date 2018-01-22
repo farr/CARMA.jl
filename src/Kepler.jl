@@ -1,15 +1,15 @@
 module Kepler
 
-function ecc_anom(M, e)
+function ecc_anom(M::Float64, e::Float64)
     M = mod2pi(M)
     if M < zero(M)
-        M = M + 2*pi
+        M = M + 2.0*pi
     end
 
     Emin = zero(M)
-    fmin = nothing
-    Emax = 2*pi*one(M)
-    fmax = nothing
+    fmin = zero(M)
+    Emax = 2.0*pi*one(M)
+    fmax = zero(M)
     Eguess = M
     while true
         f = M - Eguess + e*sin(Eguess)
@@ -45,16 +45,16 @@ function ecc_anom(M, e)
     end
 end
 
-function true_anom(ea, e)
-    ta = 2*atan(sqrt((one(e)+e)/(one(e)-e))*tan(ea/2))
+function true_anom(ea::Float64, e::Float64)
+    ta = 2.0*atan(sqrt((one(e)+e)/(one(e)-e))*tan(ea/2.0))
     if ta < zero(ta)
-        ta + 2*pi
+        ta + 2.0*pi
     else
         ta
     end
 end
 
-function rv(t, K, P, e, omega, chi)
+function rv(t::Float64, K::Float64, P::Float64, e::Float64, omega::Float64, chi::Float64)
     fp, ip = modf(t/P - chi)
 
     if fp < zero(fp)
@@ -62,7 +62,7 @@ function rv(t, K, P, e, omega, chi)
     end
 
     m = 2*pi*fp
-    
+
     ta = true_anom(ecc_anom(m, e), e)
 
     K*(cos(ta + omega) + e*cos(omega))
