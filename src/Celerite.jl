@@ -1,4 +1,4 @@
-""" 
+"""
 Kalman filters, log-likelihood and reasonable priors for a "Celerite"
 process, as defined in [Foreman-Mackey, et
 al. (2017)[https://arxiv.org/abs/1703.09710].
@@ -72,7 +72,7 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
     end
 
     b = zeros(Complex128, dim)
-    
+
     iobs = 1
     for i in 1:ndrw
         b[iobs] = 1.0
@@ -207,7 +207,7 @@ end
 
 @inbounds function predict(filt::CeleriteKalmanFilter)
     p = size(filt.x,1)
-    
+
     yp = filt.mu
     for i in 1:p
         yp += real(filt.b[1,i]*filt.x[i])
@@ -266,7 +266,7 @@ function draw_and_collapse!(filt::CeleriteKalmanFilter)
                 if l < 0.0
                     l = 0.0
                 end
-                
+
                 filt.x = filt.x + sqrt(l)*randn()*v
             end
             filt.Vx = zeros(Complex128, (nd, nd))
@@ -283,11 +283,11 @@ function generate(filt::CeleriteKalmanFilter, ts, dys)
     ys = zeros(n)
 
     reset!(filt)
-    
+
     for i in 1:n
         # Draw a new state
         draw_and_collapse!(filt)
-        
+
         y, _ = predict(filt)
 
         ys[i] = y + dys[i]*randn()
@@ -313,7 +313,7 @@ function log_likelihood(filt, ts, ys, dys)
             warn("Kalman filter has gone unstable!")
             return -Inf
         end
-        
+
         dy = ys[i] - yp
         vy = vyp + dys[i]*dys[i]
 
@@ -335,7 +335,7 @@ function residuals(filt, ts, ys, dys)
 
     resid = zeros(n)
     dresid = zeros(n)
-    
+
     reset!(filt)
     for i in 1:n
         yp, vyp = predict(filt)
@@ -367,13 +367,13 @@ function raw_covariance(ts::Array{Float64, 1}, dys::Array{Float64, 1}, drw_rms::
     dts = zeros((N,N))
 
     oscroots = osc_roots(osc_freqs, osc_Qs)
-    
+
     for j in 1:N
         for i in 1:N
             dts[i,j] = abs(ts[i] - ts[j])
         end
     end
-    
+
     for i in 1:ndrw
         cov += drw_rms[i]*drw_rms[i]*exp(-drw_rates[i]*dts)
     end
@@ -394,7 +394,7 @@ function raw_covariance(ts::Array{Float64, 1}, dys::Array{Float64, 1}, drw_rms::
 end
 
 function psd_drw(rms_amp, damp_rate, fs)
-    4.0*damp_rate*rms_amp*rms_amp./abs2(2.0*pi*1im*fs + damp_rate)
+    4.0*damp_rate*rms_amp*rms_amp./abs2.(2.0*pi*1im*fs + damp_rate)
 end
 
 function psd_osc(rms_amp, freq, Q, fs)
@@ -402,7 +402,7 @@ function psd_osc(rms_amp, freq, Q, fs)
     r2 = conj(r1)
     norm = 1.0/real(2.0*r1*(r1-r2)*(r1+r2))
 
-    rms_amp*rms_amp/norm./abs2((2.0*pi*1im*fs - r1).*(2.0*pi*1im*fs - r2))
+    rms_amp*rms_amp/norm./abs2.((2.0*pi*1im*fs - r1).*(2.0*pi*1im*fs - r2))
 end
 
 function psd(filt::CeleriteKalmanFilter, fs::Array{Float64, 1})
@@ -428,7 +428,7 @@ function predict(filt::CeleriteKalmanFilter, ts, ys, dys, tsp)
     # times.  Weighted-averaging of the two runs together gives the
     # full internal state prediction incorporating all the data at the
     # given times.
-    
+
     allts = vcat(ts, tsp)
     obsflag = convert(Array{Bool, 1}, vcat(trues(size(ts, 1)), falses(size(tsp, 1))))
     inds = sortperm(allts)
@@ -452,7 +452,7 @@ function predict(filt::CeleriteKalmanFilter, ts, ys, dys, tsp)
 
     yspbackward = zeros(size(allts, 1))
     vyspbackward = zeros(size(allts, 1))
-    
+
     reset!(filt)
     for i in eachindex(allts)
         if obsflag[rinds[i]]
