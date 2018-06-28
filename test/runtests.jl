@@ -9,5 +9,5 @@ using Base.Test
 
 @testset "CARMA Tests" begin
     include("TestCelerite.jl")
+    include("TestLowPass.jl")
 end
-
