@@ -26,7 +26,7 @@ and similarly for all other sums appearing above.  These recursions enable the
 computation of all the terms appearing in the outputs above during one forward
 and one reverse pass over the data.
 
-The filter has an (exact) autocorrelation time of ``\\tau``, which permits
+The filter has an (exact) autocorrelation time of ``2\\tau``, which permits
 thinning of the output time series to obtain (approximately) independent
 uncertainties on the low-passed data.
 
@@ -94,7 +94,7 @@ function thin_exp_lowpass(ts, ys, dys, tau)
     dys_t = [dys[1]]
 
     for i in 2:size(ts, 1)
-        if ts[i] > ts_t[ifill] + tau
+        if ts[i] > ts_t[ifill] + 2*tau
             push!(ts_t, ts[i])
             push!(ys_t, ys[i])
             push!(dys_t, dys[i])
