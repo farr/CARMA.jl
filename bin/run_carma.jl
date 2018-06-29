@@ -21,7 +21,7 @@ if size(ARGS, 1) == 4
     nlive = int(ARGS[4])
 end
 
-nmcmc = 32
+nmcmc = 128
 
 outfile = "state-$(p)-$(q).hdf5"
 ckpt_file = "state-$(p)-$(q).ckpt"
