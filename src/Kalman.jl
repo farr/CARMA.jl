@@ -154,13 +154,13 @@ end
 given times with the given observational uncertainties.  """
 function generate(filt::AR1KalmanFilter, ts::Array{Float64,1}, dys::Array{Float64,1})
     reset!(filt)
-    
+
     n = size(ts, 1)
     ys = zeros(n)
 
     ytrue = sqrt(filt.var)*randn() + filt.mu
     ys[1] = ytrue + dys[1]*randn()
-    
+
     for i in 2:n
         observe!(filt, ytrue, 0.0)
         advance!(filt, ts[i]-ts[i-1])
@@ -204,7 +204,7 @@ function log_likelihood(filt::AR1KalmanFilter, ts::Array{Float64,1}, ys::Array{F
     n = size(ts, 1)
 
     ll = zero(ys[1])
-    
+
     reset!(filt)
 
     ll += log_likelihood_term(filt, ys[1], dys[1])
@@ -223,7 +223,6 @@ end
 
 type CARMAKalmanFilter
     mu::Float64
-    sig::Float64
     x::Array{Complex128,1}
     vx::Array{Complex128, 2}
     K::Array{Complex128, 1}
@@ -295,7 +294,7 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
 
     arroots = arroots*tscale
     maroots = maroots*tscale
-    
+
     beta = poly(maroots)
     beta /= beta[1]
     b = cat(1, beta, zeros(p-q-1))
@@ -326,9 +325,7 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
     s2 = sigma*sigma/(b*V*b')[1]
     V = V*s2
 
-    sig = sqrt(real(s2))
-
-    CARMAKalmanFilter(mu, sig, zeros(Complex128, p), V, zeros(Complex128, p), zeros(Complex128, p), zeros(Complex128, (p,p)), copy(V), copy(arroots), b, tscale)
+    CARMAKalmanFilter(mu, zeros(Complex128, p), V, zeros(Complex128, p), zeros(Complex128, p), zeros(Complex128, (p,p)), copy(V), copy(arroots), b, tscale)
 end
 
 @inbounds function advance!(filt::CARMAKalmanFilter, dt::Float64)
@@ -339,7 +336,7 @@ end
         filt.lambda[i] = exp(x)
     end
     lam = filt.lambda
-        
+
     for i in 1:p
         filt.x[i] = lam[i]*filt.x[i]
     end
@@ -381,7 +378,7 @@ end
 
 @inbounds function predict(filt::CARMAKalmanFilter)
     p = size(filt.x,1)
-    
+
     yp = filt.mu
     for i in 1:p
         yp += real(filt.b[1,i]*filt.x[i])
@@ -437,7 +434,7 @@ function draw_and_collapse!(filt::CARMAKalmanFilter)
                 if l < 0.0
                     l = 0.0
                 end
-                
+
                 filt.x = filt.x + sqrt(l)*randn()*v
             end
             filt.vx = zeros(Complex128, (nd, nd))
@@ -454,11 +451,11 @@ function generate(filt::CARMAKalmanFilter, ts, dys)
     ys = zeros(n)
 
     reset!(filt)
-    
+
     for i in 1:n
         # Draw a new state
         draw_and_collapse!(filt)
-        
+
         y, _ = predict(filt)
 
         ys[i] = y + dys[i]*randn()
@@ -484,7 +481,7 @@ function log_likelihood(filt, ts, ys, dys)
             warn("Kalman filter has gone unstable!")
             return -Inf
         end
-        
+
         dy = ys[i] - yp
         vy = vyp + dys[i]*dys[i]
 
@@ -607,7 +604,7 @@ function to_roots(x::Array{Float64, 1})
     r = zeros(Complex128, n)
 
     if n == 0
-        r    
+        r
     elseif n == 1
         r[1] = -exp(x[1])
         r
@@ -750,7 +747,7 @@ end
 
 function log_prior(post::CARMAKalmanPosterior, x::CARMAPosteriorParams)
     min_r, max_r = rmin_rmax(post)
-    
+
     mu = mean(post.ys)
     sig = std(post.ys)
 
@@ -811,7 +808,7 @@ function generate(post::CARMAKalmanPosterior, p::CARMAPosteriorParams)
     filt = CARMAKalmanFilter(post, p)
 
     dy = post.dys*p.nu
-    
+
     y = generate(filt, post.ts, dy)
 
     y, dy
@@ -867,7 +864,7 @@ function randroots(rmin, rmax, n)
 
     logcmin = log(cmin)
     logcmax = log(cmax)
-    
+
     for i in 1:2:n-1
         logb = 0.0
         logc = 0.0
@@ -876,7 +873,7 @@ function randroots(rmin, rmax, n)
             logc = logcmin + (logcmax-logcmin)*rand()
 
             rs = to_roots(Float64[logb, logc])
-            
+
             r1 = rs[1]
             r2 = rs[2]
 
@@ -901,7 +898,7 @@ function init(post, n)
 
     mu0 = mean(post.ys)
     sig0 = std(post.ys)
-    
+
     xs = zeros((nparams(post), n))
 
     for i in 1:n
@@ -975,7 +972,7 @@ function psdfreq(post::CARMAKalmanPosterior; nyquist_factor=1.0, oversample_fact
 end
 
 """ Returns the one-sided PSD of the CARMA process in `post` described
-by parameters `x` at the frequencies `fs`.  
+by parameters `x` at the frequencies `fs`.
 
 The PSD is normalised so that ``\\int_{0}^{\\infty} df \\, P(f) =
 \\sigma^2``, the variance of the process.  """
@@ -992,15 +989,35 @@ function psd(post::CARMAKalmanPosterior, p::CARMAPosteriorParams, fs::Array{Floa
     psd = zeros(size(fs, 1))
 
     filt = CARMAKalmanFilter(post, p)
-    
+
+    ar = p.arroots
+    ma = p.maroots
+
+    pp = size(ar, 1)
+    q = size(ma, 1)
+
+    # Formula for autocovariance at zero lag; see, e.g. [Kelly+
+    # (2014)](https://dx.doi.org/10.1088/0004-637X/788/1/33).
+    s = zero(ar[1]) # Complex zero
+    pnorm = polyeval(ma, zero(ar[1]))
+    for k in 1:pp
+        rk = ar[k]
+        t1 = polyeval(ma, rk)
+        t2 = polyeval(ma, -rk)
+        t3 = prod([(ar[l]-rk)*(conj(ar[l]) + rk) for l in 1:pp if l != k])
+        s += t1*t2/(-2.0*real(rk)*t3*pnorm*pnorm)
+    end
+
+    sig = p.sigma/real(sqrt(s))
+
     for i in 1:size(fs, 1)
         f = fs[i]
         tpif = 2.0*pi*1.0im*f
 
-        numer = polyeval(p.maroots, tpif) / polyeval(p.maroots, 0.0+0.0*1im)
+        numer = polyeval(p.maroots, tpif) / polyeval(p.maroots, zero(tpif))
         denom = polyeval(p.arroots, tpif)
 
-        psd[i] = 2.0*filt.sig*filt.sig*abs2(numer)/abs2(denom) # 2.0 for one-sided PSD.
+        psd[i] = 2.0*sig*sig*abs2(numer)/abs2(denom) # 2.0 for one-sided
     end
 
     psd
@@ -1024,7 +1041,7 @@ function drates(post::CARMAKalmanPosterior, x::Array{Float64, 1})
 end
 
 function drates(post::CARMAKalmanPosterior, p::CARMAPosteriorParams)
-    real(p.arroots)
+    -real(p.arroots)
 end
 
 function drates(post::CARMAKalmanPosterior, x::Array{Float64, 2})
@@ -1113,7 +1130,7 @@ function predict(post, p, ts::Array{Float64, 1})
         vys_out[iforward[i]] = vys[i]
     end
 
-    ys_out[size(post.ts,1)+1:end], vys_out[size(post.ts,1)+1:end]    
+    ys_out[size(post.ts,1)+1:end], vys_out[size(post.ts,1)+1:end]
 end
 
 """
@@ -1136,7 +1153,7 @@ function draw_extrapolation(post::CARMAKalmanPosterior, p::CARMAPosteriorParams,
     @assert all(ts .> maximum(post.ts))
     @assert issorted(ts)
 
-    
+
     filt = CARMAKalmanFilter(post, p)
 
     reset!(filt)
@@ -1204,7 +1221,7 @@ function to_params(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
     @assert size(x, 1)==nparams(post)
 
     ns = nsegments(post)
-    
+
     MultiSegmentCARMAPosteriorParams(x[1:ns], x[ns+1], x[ns+2:2*ns+1], to_roots(x[2*ns+2:2*ns+1+post.p]), to_roots(x[2*ns+2+post.p:end]))
 end
 
@@ -1420,7 +1437,7 @@ function psd(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteri
         numer = polyeval(p.maroots, tpif) / polyeval(p.maroots, 0.0+0.0im)
         denom = polyeval(p.arroots, tpif)
 
-        psd[i] = filt.sig*filt.sig*abs2(numer)/abs2(denom)
+        psd[i] = 2.0*filt.sig*filt.sig*abs2(numer)/abs2(denom)
     end
 
     psd
@@ -1444,7 +1461,7 @@ function drates(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
 end
 
 function drates(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
-    real(p.arroots)
+    -real(p.arroots)
 end
 
 function drates(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 2})
@@ -1469,7 +1486,7 @@ function qfactors(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 2})
 end
 
 function residuals(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
-    residuals(post, to_params(post, x))    
+    residuals(post, to_params(post, x))
 end
 
 function residuals(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
