@@ -14,16 +14,16 @@ a sum of low-order terms.
 
 module Celerite
 
-type CeleriteKalmanFilter
+mutable struct CeleriteKalmanFilter
     mu::Float64 # Mean
-    x::Array{Complex128, 1} # State mean
-    Vx::Array{Complex128, 2} # State variance
-    K::Array{Complex128, 1} # Kalman Gain
-    lambda::Array{Complex128, 1} # Evolution factors exp(roots*dt)
-    b::Array{Complex128, 2} # Rotated observation vector
-    roots::Array{Complex128, 1} # Eigenvalues of the ODEs
-    V::Array{Complex128, 2} # Stationary covariance
-    Vtemp::Array{Complex128, 2} # Storage for matrix ops
+    x::Array{ComplexF64, 1} # State mean
+    Vx::Array{ComplexF64, 2} # State variance
+    K::Array{ComplexF64, 1} # Kalman Gain
+    lambda::Array{ComplexF64, 1} # Evolution factors exp(roots*dt)
+    b::Array{ComplexF64, 2} # Rotated observation vector
+    roots::Array{ComplexF64, 1} # Eigenvalues of the ODEs
+    V::Array{ComplexF64, 2} # Stationary covariance
+    Vtemp::Array{ComplexF64, 2} # Storage for matrix ops
     drw_rms::Array{Float64, 1}
     drw_rates::Array{Float64, 1}
     osc_rms::Array{Float64, 1}
@@ -33,16 +33,16 @@ end
 
 function reset!(filt::CeleriteKalmanFilter)
     p = size(filt.x, 1)
-    filt.x = zeros(Complex128, p)
+    filt.x = zeros(ComplexF64, p)
     filt.Vx = copy(filt.V)
-    filt.K = zeros(Complex128, p)
+    filt.K = zeros(ComplexF64, p)
     filt
 end
 
 function osc_roots(osc_freqs::Array{Float64, 1}, osc_Qs::Array{Float64, 1})
     nosc = size(osc_freqs, 1)
 
-    oscroots = zeros(Complex128, nosc)
+    oscroots = zeros(ComplexF64, nosc)
     for i in 1:nosc
         omega0 = 2.0*pi*osc_freqs[i]
         alpha = omega0/(2.0*osc_Qs[i])
@@ -58,7 +58,7 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
 
     oscroots = osc_roots(osc_freqs, osc_Qs)
 
-    roots = zeros(Complex128, dim)
+    roots = zeros(ComplexF64, dim)
     ii = 1
     for i in 1:ndrw
         roots[ii] = -drw_rates[i]
@@ -71,7 +71,7 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
         ii += 2
     end
 
-    b = zeros(Complex128, dim)
+    b = zeros(ComplexF64, dim)
 
     iobs = 1
     for i in 1:ndrw
@@ -86,7 +86,7 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
 
     b = b'
 
-    U = zeros(Complex128, (dim,dim))
+    U = zeros(ComplexF64, (dim,dim))
 
     ii = 1
     for i in 1:ndrw
@@ -104,7 +104,7 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
 
     b = b*U # Rotated observation vector
 
-    e = zeros(Complex128, dim)
+    e = zeros(ComplexF64, dim)
     ii = 1
     for i in 1:ndrw
         e[ii] = 1.0
@@ -118,7 +118,7 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
 
     J = U \ e
 
-    V = zeros(Complex128, (dim,dim))
+    V = zeros(ComplexF64, (dim,dim))
 
     ii = 1
     for i in 1:ndrw
@@ -150,7 +150,7 @@ function CeleriteKalmanFilter(mu::Float64, drw_rms::Array{Float64, 1}, drw_rates
         ii += 2
     end
 
-    CeleriteKalmanFilter(mu, zeros(Complex128, dim), V, zeros(Complex128, dim), zeros(Complex128, dim), b, roots, copy(V), zeros(Complex128, (dim,dim)), drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
+    CeleriteKalmanFilter(mu, zeros(ComplexF64, dim), V, zeros(ComplexF64, dim), zeros(ComplexF64, dim), b, roots, copy(V), zeros(ComplexF64, (dim,dim)), drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
 end
 
 @inbounds function advance!(filt::CeleriteKalmanFilter, dt::Float64)
@@ -168,8 +168,8 @@ end
 
     for j in 1:p
         for i in 1:p
-            a::Complex128 = lam[i]*conj(lam[j])
-            b::Complex128 = a*(filt.Vx[i,j] - filt.V[i,j])
+            a::ComplexF64 = lam[i]*conj(lam[j])
+            b::ComplexF64 = a*(filt.Vx[i,j] - filt.V[i,j])
             filt.Vx[i,j] = b + filt.V[i,j]
         end
     end
@@ -196,8 +196,8 @@ end
 
     for j in 1:p
         for i in 1:p
-            a::Complex128 = vy*filt.K[i]
-            b::Complex128 = a*conj(filt.K[j])
+            a::ComplexF64 = vy*filt.K[i]
+            b::ComplexF64 = a*conj(filt.K[j])
             filt.Vx[i,j] = filt.Vx[i,j] - b
         end
     end
@@ -216,8 +216,8 @@ end
     vyp = 0.0
     for i in 1:p
         for j in 1:p
-            a::Complex128 = filt.b[1,i]*filt.Vx[i,j]
-            b::Complex128 = a*conj(filt.b[1,j])
+            a::ComplexF64 = filt.b[1,i]*filt.Vx[i,j]
+            b::ComplexF64 = a*conj(filt.b[1,j])
             vyp = vyp + real(b)
         end
     end
@@ -254,9 +254,9 @@ function draw_and_collapse!(filt::CeleriteKalmanFilter)
         end
         L = ctranspose(chol(Hermitian(filt.Vx)))
         filt.x = filt.x + L*randn(nd)
-        filt.Vx = zeros(Complex128, (nd, nd))
+        filt.Vx = zeros(ComplexF64, (nd, nd))
     catch e
-        if isa(e, Base.LinAlg.PosDefException)
+        if isa(e, Base.LinearAlgebra.PosDefException)
             warn("Current variance matrix not pos. def.---may be roundoff problem in generation.")
             F = eigfact(filt.Vx)
             for i in eachindex(F[:values])
@@ -269,7 +269,7 @@ function draw_and_collapse!(filt::CeleriteKalmanFilter)
 
                 filt.x = filt.x + sqrt(l)*randn()*v
             end
-            filt.Vx = zeros(Complex128, (nd, nd))
+            filt.Vx = zeros(ComplexF64, (nd, nd))
         else
             rethrow()
         end
@@ -375,7 +375,7 @@ function raw_covariance(ts::Array{Float64, 1}, dys::Array{Float64, 1}, drw_rms::
     end
 
     for i in 1:ndrw
-        cov += drw_rms[i]*drw_rms[i]*exp(-drw_rates[i]*dts)
+        cov += drw_rms[i]*drw_rms[i]*exp.(-drw_rates[i].*dts)
     end
 
     for i in 1:nosc
@@ -383,7 +383,7 @@ function raw_covariance(ts::Array{Float64, 1}, dys::Array{Float64, 1}, drw_rms::
         B = 1.0 / (-4.0*real(oscroots[i])*(oscroots[i] - conj(oscroots[i]))*conj(oscroots[i]))
 
         s2 = osc_rms[i]*osc_rms[i] / (A+B)
-        cov += real(s2*(A*exp(oscroots[i]*dts) + B*exp(conj(oscroots[i])*dts)))
+        cov = cov .+ real.(s2.*(A.*exp.(oscroots[i].*dts) .+ B.*exp.(conj(oscroots[i]).*dts)))
     end
 
     for i in 1:N

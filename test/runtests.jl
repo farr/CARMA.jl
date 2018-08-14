@@ -1,5 +1,5 @@
 using CARMA
-using Base.Test
+using Test
 
 # Ideas for tests to implement Any Day Now (TM)
 #
@@ -9,5 +9,6 @@ using Base.Test
 
 @testset "CARMA Tests" begin
     include("TestCelerite.jl")
+    include("TestKalman.jl")
     include("TestLowPass.jl")
 end

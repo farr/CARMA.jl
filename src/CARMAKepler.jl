@@ -9,7 +9,7 @@ using ..Kepler
 import Base:
     write, read
 
-type MultiEpochPosterior
+struct MultiEpochPosterior
     ts::Array{Array{Float64, 1}, 1}
     ys::Array{Array{Float64, 1}, 1}
     dys::Array{Array{Float64, 1}, 1}
@@ -71,7 +71,7 @@ function MultiEpochPosterior(ts, ys, dys, per_min, per_max, ndrw, nosc, rate_min
     MultiEpochPosterior(ts, ys, dys, inds, allts, allys, alldys, per_min, per_max, rms_min/100.0, 10.0*rms_max, ndrw, nosc, rate_min, rate_max, f_min, f_max, rms_min/100.0, rms_max*10.0, 1.0, Q_max)
 end
 
-type MultiEpochParams
+struct MultiEpochParams
     mu::Array{Float64, 1}
     nu::Array{Float64, 1}
 

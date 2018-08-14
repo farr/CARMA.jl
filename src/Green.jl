@@ -9,13 +9,13 @@ roots, the first `p` alphas are zero, and the remaining will satisfy
     y[k] - sum([alphas[i,k]*y[k-i] for i in 1:p]) == 0
 
 when `y` satisfies the homogeneous equation.  """
-function alphas(ts::Array{Float64, 1}, roots::Array{Complex128, 1})
+function alphas(ts::Array{Float64, 1}, roots::Array{ComplexF64, 1})
     p = size(roots, 1)
     n = size(ts, 1)
 
     alphas = zeros(p, n)
 
-    M = zeros(Complex128, p,p)
+    M = zeros(ComplexF64, p,p)
     b = ones(p)
 
     # Alphas for samples before the p+1-st are zero
@@ -35,10 +35,10 @@ end
 Green's function:
 
     g(t,xi) == sum([g[i]*exp(roots[i]*(t-xi)) for i in 1:p]) """
-function greens_coeff(roots::Array{Complex128, 1})
+function greens_coeff(roots::Array{ComplexF64, 1})
     p = size(roots, 1)
 
-    M = zeros(Complex128, p, p)
+    M = zeros(ComplexF64, p, p)
     b = zeros(p)
 
     for i in 1:p
@@ -53,7 +53,7 @@ function greens_coeff(roots::Array{Complex128, 1})
 end
 
 """ Returns the coefficients of the exponential terms in the Green's
-function integrand for the solution `y`: 
+function integrand for the solution `y`:
 
     c[i] == g[i]*prod([(roots[i] + maroots[j])/(-maroots[j]) for j in 1:q])
 
@@ -64,14 +64,14 @@ where `y` satisfies the ODE
 with `eta` a white noise process with variance `sigma^2`.
 
 """
-function greens_integrand_coeff(roots::Array{Complex128,1}, maroots::Array{Complex128, 1}, g::Array{Complex128, 1})
+function greens_integrand_coeff(roots::Array{ComplexF64,1}, maroots::Array{ComplexF64, 1}, g::Array{ComplexF64, 1})
     p = size(roots, 1)
     q = size(maroots, 1)
 
     if q == 0
         g
     else
-        coeff = zeros(Complex128, p)
+        coeff = zeros(ComplexF64, p)
 
         for i in 1:p
             coeff[i] = g[i]
@@ -84,10 +84,10 @@ function greens_integrand_coeff(roots::Array{Complex128,1}, maroots::Array{Compl
     end
 end
 
-function cov_coeffs(gic::Array{Complex128, 1}, roots::Array{Complex128, 1})
+function cov_coeffs(gic::Array{ComplexF64, 1}, roots::Array{ComplexF64, 1})
     p = size(roots, 1)
-    
-    cc = zeros(Complex128, p)
+
+    cc = zeros(ComplexF64, p)
 
     for i in 1:p
         cc[i] = zero(cc[i])
@@ -102,7 +102,7 @@ end
 """ Returns the full covariance matrix computed using the Green's
 function method at the given times, `ts`.  Requires that the `ts`
 array is sorted to make bookkeeping easier.  """
-function full_cov(ts::Array{Float64, 1}, sigma::Float64, roots::Array{Complex128, 1}, maroots::Array{Complex128, 1})
+function full_cov(ts::Array{Float64, 1}, sigma::Float64, roots::Array{ComplexF64, 1}, maroots::Array{ComplexF64, 1})
     n = size(ts, 1)
     p = size(roots, 1)
     q = size(maroots, 1)
@@ -119,7 +119,7 @@ function full_cov(ts::Array{Float64, 1}, sigma::Float64, roots::Array{Complex128
     cov = zeros(Float64, n, n)
     for i in 1:n
         for j in 1:i
-            celt = zero(Complex128)
+            celt = zero(ComplexF64)
             dt = ts[i] - ts[j]
             for k in 1:p
                 celt += ccs[k]*exp(roots[k]*dt)
@@ -131,7 +131,7 @@ function full_cov(ts::Array{Float64, 1}, sigma::Float64, roots::Array{Complex128
 
     sigma2 = sigma*sigma
     factor = sigma2 / cov[1,1]
-    
+
     for j in 1:n
         for i in 1:n
             cov[i,j] = cov[i,j] * factor

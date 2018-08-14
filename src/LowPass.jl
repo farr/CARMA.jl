@@ -71,8 +71,8 @@ function exp_lowpass(ts, ys, dys, tau)
         right_sums[i] = wt*right_sums[i+1] + wt
     end
 
-    ys_filt = (left_mus + right_mus + ys)./(1.0 + left_sums + right_sums)
-    dys_filt = sqrt.((left_sigmas.*left_sigmas + right_sigmas.*right_sigmas + dys.*dys)./((1.0 + left_sums + right_sums).*(1.0 + left_sums + right_sums)))
+    ys_filt = (left_mus .+ right_mus .+ ys)./(1.0 .+ left_sums .+ right_sums)
+    dys_filt = sqrt.((left_sigmas.*left_sigmas .+ right_sigmas.*right_sigmas .+ dys.*dys)./((1.0 .+ left_sums .+ right_sums).*(1.0 .+ left_sums .+ right_sums)))
 
     ys_filt, dys_filt
 end

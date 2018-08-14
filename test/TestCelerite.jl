@@ -1,3 +1,6 @@
+using DelimitedFiles
+using LinearAlgebra
+
 @testset "Celerite Tests" begin
     @testset "Celerite Kalman and Raw Log-Likelihoods Agree" begin
         # Test that the raw and Kalman log-likelihood agree
@@ -20,13 +23,14 @@
         filt = Celerite.CeleriteKalmanFilter(mu, drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
         ll_filt = Celerite.log_likelihood(filt, test_ts, test_fs, test_dfs)
         cov = Celerite.raw_covariance(test_ts, test_dfs, drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
-        F = cholfact(cov)
-        L = F[:L]
+
+        F = cholesky(cov)
+        L = F.L
         logdet = 0.0
         for i in 1:size(cov,1)
             logdet += log(L[i,i])
         end
-        ll_raw = -0.5*N*log(2.0*pi) - logdet - 0.5*dot((test_fs - mu), F \ (test_fs - mu))
+        ll_raw = -0.5*N*log(2.0*pi) - logdet - 0.5*dot((test_fs .- mu), F \ (test_fs .- mu))
 
         @test abs(ll_filt - ll_raw[1]) < 1e-10
     end

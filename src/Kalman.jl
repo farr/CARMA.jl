@@ -1,10 +1,12 @@
 module Kalman
 
-using Base.LinAlg: PosDefException
+using LinearAlgebra
+
+using Statistics
 
 export AR1KalmanFilter, reset!, advance!, observe!, generate, whiten, log_likelihood
 
-type AR1KalmanFilter
+mutable struct AR1KalmanFilter
     ypred::Float64
     vypred::Float64
     mu::Float64
@@ -12,7 +14,7 @@ type AR1KalmanFilter
     tau::Float64
 end
 
-type AR1KalmanPosterior
+struct AR1KalmanPosterior
     ts::Array{Float64, 1}
     ys::Array{Float64, 1}
     dys::Array{Float64, 1}
@@ -26,7 +28,7 @@ function AR1KalmanPosterior(ts, ys, dys)
     AR1KalmanPosterior(ts, ys, dys, mean(ys), std(ys), minimum(diff(ts)), ts[end]-ts[1])
 end
 
-type AR1KalmanParams
+struct AR1KalmanParams
     mu::Float64
     sigma::Float64
     nu::Float64
@@ -50,7 +52,7 @@ function rand_between(a, b)
 end
 
 function rand_between(a, b, n)
-    a + (b-a)*rand(n)
+    a .+ (b-a).*rand(n)
 end
 
 function init(post::AR1KalmanPosterior, n)
@@ -63,9 +65,9 @@ function init(post::AR1KalmanPosterior, n)
     T = post.T
 
     pts[1,:] = rand_between((mu-10*sig), (mu+10*sig), n)
-    pts[2,:] = exp(rand_between(log(sig/10.0),log(sig*10.0), n))
-    pts[3,:] = exp(rand_between(log(0.1), log(10.0), n))
-    pts[4,:] = exp(rand_between(log(0.1*dtmin),log(10.0*T), n))
+    pts[2,:] = exp.(rand_between(log(sig/10.0),log(sig*10.0), n))
+    pts[3,:] = exp.(rand_between(log(0.1), log(10.0), n))
+    pts[4,:] = exp.(rand_between(log(0.1*dtmin),log(10.0*T), n))
 
     pts
 end
@@ -221,25 +223,25 @@ function psd(filt::AR1KalmanFilter, fs::Array{Float64, 1})
     4.0*filt.tau ./ (1.0 + (2.0*pi*filt.tau*fs).^2)
 end
 
-type CARMAKalmanFilter
+mutable struct CARMAKalmanFilter
     mu::Float64
-    x::Array{Complex128,1}
-    vx::Array{Complex128, 2}
-    K::Array{Complex128, 1}
-    lambda::Array{Complex128, 1}
-    vxtemp::Array{Complex128, 2}
-    v::Array{Complex128, 2}
-    arroots::Array{Complex128, 1}
-    b::Array{Complex128, 2}
+    x::Array{ComplexF64,1}
+    vx::Array{ComplexF64, 2}
+    K::Array{ComplexF64, 1}
+    lambda::Array{ComplexF64, 1}
+    vxtemp::Array{ComplexF64, 2}
+    v::Array{ComplexF64, 2}
+    arroots::Array{ComplexF64, 1}
+    b::Array{ComplexF64, 2}
     tscale::Float64
 end
 
 function reset!(filt::CARMAKalmanFilter)
     p = size(filt.x, 1)
 
-    filt.x = zeros(Complex128, p)
+    filt.x = zeros(ComplexF64, p)
     filt.vx = copy(filt.v)
-    filt.K = zeros(Complex128, p)
+    filt.K = zeros(ComplexF64, p)
 
     filt
 end
@@ -249,7 +251,7 @@ coefficients, `c`, represting the polynomial as `p(x) =
 sum(c[i]*x^(i-1))`.
 
 """
-function poly{T <: Number}(roots::Array{T,1})
+function poly(roots::Array{T,1}) where {T <: Number}
     n = size(roots, 1) + 1
 
     if n == 1
@@ -272,7 +274,7 @@ function poly{T <: Number}(roots::Array{T,1})
     end
 end
 
-function polyeval{T <: Number}(roots::Array{T, 1}, x::T)
+function polyeval(roots::Array{T, 1}, x::T) where {T <: Number}
     p = one(x)
 
     for i in 1:size(roots,1)
@@ -282,7 +284,7 @@ function polyeval{T <: Number}(roots::Array{T, 1}, x::T)
     p
 end
 
-function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex128, 1}, maroots::Array{Complex128, 1})
+function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{ComplexF64, 1}, maroots::Array{ComplexF64, 1})
     p = size(arroots, 1)
     q = size(maroots, 1)
 
@@ -292,15 +294,15 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
 
     tscale = exp(-mean(log.(abs.(arroots)))) # Try to stabilise the variance computation
 
-    arroots = arroots*tscale
-    maroots = maroots*tscale
+    arroots = arroots.*tscale
+    maroots = maroots.*tscale
 
     beta = poly(maroots)
     beta /= beta[1]
-    b = cat(1, beta, zeros(p-q-1))
+    b = cat(beta, zeros(p-q-1), dims=1)
     b = b'
 
-    U = zeros(Complex128, (p,p))
+    U = zeros(ComplexF64, (p,p))
     for j in 1:p
         for i in 1:p
             U[i,j] = arroots[j]^(i-1)
@@ -310,12 +312,12 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
     # Rotated observation vector
     b = b*U
 
-    e = zeros(Complex128, p)
-    e[end] = one(Complex128)
+    e = zeros(ComplexF64, p)
+    e[end] = one(ComplexF64)
 
     J = U \ e
 
-    V = zeros(Complex128, (p,p))
+    V = zeros(ComplexF64, (p,p))
     for j in 1:p
         for i in 1:p
             V[i,j] = -J[i]*conj(J[j])/(arroots[i] + conj(arroots[j]))
@@ -325,7 +327,7 @@ function CARMAKalmanFilter(mu::Float64, sigma::Float64, arroots::Array{Complex12
     s2 = sigma*sigma/(b*V*b')[1]
     V = V*s2
 
-    CARMAKalmanFilter(mu, zeros(Complex128, p), V, zeros(Complex128, p), zeros(Complex128, p), zeros(Complex128, (p,p)), copy(V), copy(arroots), b, tscale)
+    CARMAKalmanFilter(mu, zeros(ComplexF64, p), V, zeros(ComplexF64, p), zeros(ComplexF64, p), zeros(ComplexF64, (p,p)), copy(V), copy(arroots), b, tscale)
 end
 
 @inbounds function advance!(filt::CARMAKalmanFilter, dt::Float64)
@@ -421,11 +423,11 @@ function draw_and_collapse!(filt::CARMAKalmanFilter)
         for i in 1:nd
             filt.vx[i,i] = real(filt.vx[i,i]) # Fix a roundoff error problem?
         end
-        L = ctranspose(chol(Hermitian(filt.vx)))
+        L = cholesky(Hermitian(filt.vx)).L
         filt.x = filt.x + L*randn(nd)
-        filt.vx = zeros(Complex128, (nd, nd))
+        filt.vx = zeros(ComplexF64, (nd, nd))
     catch e
-        if isa(e, Base.LinAlg.PosDefException)
+        if isa(e, PosDefException)
             F = eigfact(filt.vx)
             for i in eachindex(F[:values])
                 l = real(F[:values][i])
@@ -435,9 +437,9 @@ function draw_and_collapse!(filt::CARMAKalmanFilter)
                     l = 0.0
                 end
 
-                filt.x = filt.x + sqrt(l)*randn()*v
+                filt.x = filt.x + sqrt(l)*randn().*v
             end
-            filt.vx = zeros(Complex128, (nd, nd))
+            filt.vx = zeros(ComplexF64, (nd, nd))
         else
             rethrow()
         end
@@ -579,7 +581,7 @@ function raw_carma_log_likelihood(ts, ys, dys, mu, sigma, arroots, maroots)
     -0.5*n*log(2*pi) - logdet - 0.5*dot(zs, F \ zs)
 end
 
-type CARMAKalmanPosterior
+struct CARMAKalmanPosterior
     ts::Array{Float64, 1}
     ys::Array{Float64, 1}
     dys::Array{Float64,1}
@@ -591,17 +593,17 @@ function nparams(post::CARMAKalmanPosterior)
     post.p + post.q + 3
 end
 
-type CARMAPosteriorParams
+struct CARMAPosteriorParams
     mu::Float64
     sigma::Float64
     nu::Float64
-    arroots::Array{Complex128, 1}
-    maroots::Array{Complex128, 1}
+    arroots::Array{ComplexF64, 1}
+    maroots::Array{ComplexF64, 1}
 end
 
 function to_roots(x::Array{Float64, 1})
     n = size(x, 1)
-    r = zeros(Complex128, n)
+    r = zeros(ComplexF64, n)
 
     if n == 0
         r
@@ -636,7 +638,7 @@ function to_roots(x::Array{Float64, 1})
     end
 end
 
-function to_rparams(x::Array{Complex128, 1})
+function to_rparams(x::Array{ComplexF64, 1})
     n = size(x, 1)
     rp = zeros(n)
 
@@ -811,7 +813,7 @@ function generate(post::CARMAKalmanPosterior, p::CARMAPosteriorParams)
 
     y = generate(filt, post.ts, dy)
 
-    y, dy
+    y
 end
 
 function log_likelihood(post::CARMAKalmanPosterior, x::Array{Float64, 1})
@@ -1185,7 +1187,7 @@ function draw_extrapolation(post::CARMAKalmanPosterior, p::CARMAPosteriorParams,
     ys_out
 end
 
-type MultiSegmentCARMAKalmanPosterior
+struct MultiSegmentCARMAKalmanPosterior
     ts::Array{Array{Float64, 1}, 1}
     ys::Array{Array{Float64, 1}, 1}
     dys::Array{Array{Float64, 1}, 1}
@@ -1209,12 +1211,12 @@ function nsegments(post::MultiSegmentCARMAKalmanPosterior)
     size(post.ts, 1)
 end
 
-type MultiSegmentCARMAPosteriorParams
+struct MultiSegmentCARMAPosteriorParams
     mu::Array{Float64, 1}
     sigma::Float64
     nu::Array{Float64, 1}
-    arroots::Array{Complex128, 1}
-    maroots::Array{Complex128, 1}
+    arroots::Array{ComplexF64, 1}
+    maroots::Array{ComplexF64, 1}
 end
 
 function to_params(post::MultiSegmentCARMAKalmanPosterior, x::Array{Float64, 1})
@@ -1302,7 +1304,7 @@ function log_prior(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAP
         end
     end
 
-    -log(p.sigma) - sum(log(p.nu))
+    -log(p.sigma) - sum(log.(p.nu))
 end
 
 function make_filter(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
@@ -1324,8 +1326,8 @@ end
 function alltsysdys(post::MultiSegmentCARMAKalmanPosterior, p::MultiSegmentCARMAPosteriorParams)
     allts = vcat(post.ts...)
 
-    ys = Array{Float64, 1}[ys - mu for (ys, mu) in zip(post.ys, p.mu)]
-    dys = Array{Float64, 1}[dys*nu for (dys, nu) in zip(post.dys, p.nu)]
+    ys = Array{Float64, 1}[ys .- mu for (ys, mu) in zip(post.ys, p.mu)]
+    dys = Array{Float64, 1}[dys.*nu for (dys, nu) in zip(post.dys, p.nu)]
 
     allys = vcat(ys...)
     alldys = vcat(dys...)
@@ -1394,7 +1396,7 @@ function init(post::MultiSegmentCARMAKalmanPosterior, n)
     for i in 1:n
         mus = mu0s-10.0*sig0s + 20.0*sig0s.*rand(size(sig0s,1))
         sig = exp(log(0.1*total_sig) + rand()*(log(10.0*total_sig) - log(0.1*total_sig)))
-        nus = exp(log(0.1) + rand(size(mu0s,1))*(log(10.0) - log(1.0)))
+        nus = exp.(log(0.1) .+ rand(size(mu0s,1)).*(log(10.0) - log(1.0)))
 
         arroots = randroots(rmin, rmax, post.p)
         maroots = randroots(rmin, rmax, post.q)

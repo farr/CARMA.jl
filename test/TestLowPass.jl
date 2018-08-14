@@ -2,12 +2,12 @@
     @testset "Agreement with explicit smoothing for random data" begin
         ts = cumsum(rand(1000))
         ys = randn(1000)
-        dys = 0.1 + rand(1000)
+        dys = 0.1 .+ rand(1000)
 
         i = 100
         tau = pi
 
-        wts = exp.(-abs.(ts-ts[i])/tau)
+        wts = exp.(-abs.(ts.-ts[i])./tau)
         yout = sum(ys.*wts)/sum(wts)
         dyout = sqrt(sum(wts.*wts.*dys.*dys)/(sum(wts)*sum(wts)))
 
