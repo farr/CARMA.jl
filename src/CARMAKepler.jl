@@ -107,7 +107,7 @@ function to_params(post::MultiEpochPosterior, x::Array{Float64, 1})
     P = Parameterizations.bounded_value(x[i+1], post.P_min, post.P_max)
     ecosw, esinw = Parameterizations.unit_disk_value(x[i+2:i+3])
     e = sqrt(ecosw*ecosw + esinw*esinw)
-    omega = atan2(esinw, ecosw)
+    omega = atan(esinw, ecosw)
     chi = Parameterizations.bounded_value(x[i+4], 0.0, 1.0)
     i = i + 5
 
@@ -191,7 +191,7 @@ function log_prior(post::MultiEpochPosterior, p::MultiEpochParams)
         logp += logpdf(Normal(mu, 10*sigma), p.mu[i])
 
         logp -= log(p.nu[i]) # flat in log(nu)
-        logp += bounded_logjac_value(p.nu, 0.5, 2)
+        logp += bounded_logjac_value(p.nu[i], 0.5, 2)
     end
 
     logp -= log(p.K)
@@ -268,7 +268,7 @@ function draw_prior(post::MultiEpochPosterior)
     end
 
     e = sqrt(x*x + y*y)
-    omega = atan2(y,x)
+    omega = atan(y,x)
 
     chi = rand()
 
@@ -313,8 +313,8 @@ function produce_ys_dys(post::MultiEpochPosterior, p::MultiEpochParams)
     dys = zeros(n)
 
     for i in eachindex(post.ts)
-        ys[post.inds[i]] = post.ys[i] - p.mu[i]
-        dys[post.inds[i]] = post.dys[i]*p.nu[i]
+        ys[post.inds[i]] = post.ys[i] .- p.mu[i]
+        dys[post.inds[i]] = post.dys[i].*p.nu[i]
     end
 
     for i in eachindex(ys)

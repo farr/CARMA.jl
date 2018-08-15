@@ -27,9 +27,9 @@ version = "0.4.1"
 
 [[Blosc]]
 deps = ["BinaryProvider", "CMakeWrapper", "Compat", "Libdl"]
-git-tree-sha1 = "e6ad305e3149d667566e0c7ec0e808dcf74b9e61"
+git-tree-sha1 = "71fb23581e1f0b0ae7be8ccf0ebfb3600e23ca41"
 uuid = "a74b3585-a348-5f62-a45c-50e91977d574"
-version = "0.5.0"
+version = "0.5.1"
 
 [[BufferedStreams]]
 deps = ["Compat", "Pkg", "Test"]
@@ -122,10 +122,10 @@ uuid = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 version = "0.19.0"
 
 [[LibCURL]]
-deps = ["BinDeps", "Compat", "Libdl", "WinRPM"]
-git-tree-sha1 = "9b431bc66757ad5124f4d206c319996a2dfa2662"
+deps = ["BinaryProvider", "Compat", "Libdl", "Pkg"]
+git-tree-sha1 = "4f00f8f8bf59e2731ccd6929c33c436ed5d7765f"
 uuid = "b27032c2-a3e7-50c8-80cd-2d36dbcbfd21"
-version = "0.2.2"
+version = "0.3.0"
 
 [[LibExpat]]
 deps = ["Compat"]
@@ -279,9 +279,9 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[VersionParsing]]
 deps = ["Compat"]
-git-tree-sha1 = "e8524bb636735227fd9d750dfa81f98db8bc5b0c"
+git-tree-sha1 = "c9d5aa108588b978bd859554660c8a5c4f2f7669"
 uuid = "81def892-9a0e-5fdd-b105-ffc91e053289"
-version = "1.1.1"
+version = "1.1.2"
 
 [[WinRPM]]
 deps = ["BinDeps", "Compat", "HTTPClient", "LibExpat", "Libdl", "Libz", "SHA", "URIParser"]

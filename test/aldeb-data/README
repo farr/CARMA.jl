@@ -1,0 +1,12 @@
+These data have been downloaded from
+http://cdsarc.u-strasbg.fr/viz-bin/qcat?J/A+A/580/A31 .  The mapping from table
+numbers to data set names from that paper is
+
+dsnames = Dict("table3.dat" => "CFHT",
+    "table4.dat" => "DAO",
+    "table5.dat" => "McDonald 2.1m",
+    "table6.dat" => "McDonald 2.7m",
+    "table7.dat" => "McDonald 2.7m + Tull",
+    "table8.dat" => "TLS",
+    "table9.dat" => "BOAO",
+    "tablesong.dat" => "SONG")
