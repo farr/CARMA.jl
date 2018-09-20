@@ -34,4 +34,32 @@ using LinearAlgebra
 
         @test abs(ll_filt - ll_raw[1]) < 1e-10
     end
+
+    @testset "Check that PSD can be run" begin
+        data = readdlm("test-data.dat")
+        test_ts = data[:,1]
+        test_fs = data[:,2]
+        test_dfs = data[:,3]
+
+        drw_rms = [sqrt(1000.0)]
+        drw_rates = [1.0]
+        osc_rms = [sqrt(1432.0)]
+        osc_freqs = [18.0]
+        osc_Qs = [100.0]
+
+        mu = 210933.0
+
+        N = size(test_ts,1)
+
+        filt = Celerite.CeleriteKalmanFilter(mu, drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
+
+        T = test_ts[end]-test_ts[1]
+        dtmin = minimum(diff(test_ts))
+
+        psdfs = exp.(range(-log(T), stop=-log(2.0*dtmin), length=1000))
+
+        psd = Celerite.psd(filt, psdfs)
+
+        @test psd[1] > 0.0
+    end
 end

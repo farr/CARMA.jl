@@ -394,7 +394,7 @@ function raw_covariance(ts::Array{Float64, 1}, dys::Array{Float64, 1}, drw_rms::
 end
 
 function psd_drw(rms_amp, damp_rate, fs)
-    4.0*damp_rate*rms_amp*rms_amp./abs2.(2.0*pi*1im*fs + damp_rate)
+    4.0*damp_rate*rms_amp*rms_amp./abs2.(2.0*pi*1im.*fs .+ damp_rate)
 end
 
 function psd_osc(rms_amp, freq, Q, fs)
@@ -402,18 +402,18 @@ function psd_osc(rms_amp, freq, Q, fs)
     r2 = conj(r1)
     norm = 1.0/real(2.0*r1*(r1-r2)*(r1+r2))
 
-    rms_amp*rms_amp/norm./abs2.((2.0*pi*1im*fs - r1).*(2.0*pi*1im*fs - r2))
+    rms_amp*rms_amp/norm./abs2.((2.0*pi*1im.*fs .- r1).*(2.0*pi*1im.*fs .- r2))
 end
 
 function psd(filt::CeleriteKalmanFilter, fs::Array{Float64, 1})
     Pfs = zeros(size(fs,1))
 
     for i in 1:size(filt.drw_rms,1)
-        Pfs += psd_drw(filt.drw_rms[i], filt.drw_rates[i], fs)
+        Pfs .= Pfs .+ psd_drw(filt.drw_rms[i], filt.drw_rates[i], fs)
     end
 
     for i in 1:size(filt.osc_rms,1)
-        Pfs += psd_osc(filt.osc_rms[i], filt.osc_freqs[i], filt.osc_Qs[i], fs)
+        Pfs .= Pfs .+ psd_osc(filt.osc_rms[i], filt.osc_freqs[i], filt.osc_Qs[i], fs)
     end
 
     Pfs
