@@ -1,7 +1,7 @@
 module Kalman
 
 using LinearAlgebra
-
+using Logging
 using Statistics
 
 export AR1KalmanFilter, reset!, advance!, observe!, generate, whiten, log_likelihood
