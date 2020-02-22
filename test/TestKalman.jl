@@ -4,6 +4,7 @@
 
 using DelimitedFiles
 using Ensemble
+using HDF5
 using Statistics
 
 @testset "Kalman.jl Test Suite" begin
@@ -113,5 +114,34 @@ using Statistics
         end
         @test abs(mean(sigmas) - sigma) < 2*std(sigmas)
         @test abs(mean(fs) - f0) < 2*std(fs)
+    end
+
+    @testset "Read/write to HDF5" begin
+        N = 128
+        p = 3
+        q = 2
+        ts = sort(randn(N))
+        ys = randn(N)
+        dys = abs.(randn(N))
+
+        post = Kalman.CARMAKalmanPosterior(ts, ys, dys, p, q)
+
+        try
+            h5open("test-CARMA-Kepler.h5", "w") do f
+                write(f, post)
+            end
+
+            h5open("test-CARMA-Kepler.h5", "r") do f
+                global post2 = Kalman.CARMAKalmanPosterior(f)
+            end
+
+            @test all(post.ts .== post2.ts)
+            @test all(post.ys .== post2.ys)
+            @test all(post.dys .== post2.dys)
+            @test post.p == post2.p
+            @test post.q == post2.q
+        finally
+            rm("test-CARMA-Kepler.h5")
+        end
     end
 end

@@ -1,8 +1,12 @@
 module Kalman
 
+using HDF5
 using LinearAlgebra
 using Logging
 using Statistics
+
+import Base:
+    write, read
 
 export AR1KalmanFilter, reset!, advance!, observe!, generate, whiten, log_likelihood
 
@@ -587,6 +591,22 @@ struct CARMAKalmanPosterior
     dys::Array{Float64,1}
     p::Int
     q::Int
+end
+
+function write(f::Union{HDF5File, HDF5Group}, p::CARMAKalmanPosterior)
+    f["ts", "compress", 3, "shuffle", ()] = p.ts
+    f["ys", "compress", 3, "shuffle", ()] = p.ys
+    f["dys", "compress", 3, "shuffle", ()] = p.dys
+    f["p"] = p.p
+    f["q"] = p.q
+end
+
+function read(f::Union{HDF5File, HDF5Group}, ::Type{CARMAKalmanPosterior})
+    CARMAKalmanPosterior(f)
+end
+
+function CARMAKalmanPosterior(f::Union{HDF5File, HDF5Group})
+    CARMAKalmanPosterior(read(f, "ts"), read(f, "ys"), read(f, "dys"), read(f, "p"), read(f, "q"))
 end
 
 function nparams(post::CARMAKalmanPosterior)
