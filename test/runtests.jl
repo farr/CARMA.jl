@@ -8,8 +8,8 @@ using Test
 # 3. Check to_params/to_array are inverses.
 
 @testset "CARMA Tests" begin
-    #include("TestCARMAKepler.jl")
-    #include("TestCelerite.jl")
+    include("TestCARMAKepler.jl")
+    include("TestCelerite.jl")
     include("TestKalman.jl")
-    #include("TestLowPass.jl")
+    include("TestLowPass.jl")
 end

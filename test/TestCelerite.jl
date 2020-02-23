@@ -10,6 +10,15 @@ using LinearAlgebra
         test_fs = data[:,2]
         test_dfs = data[:,3]
 
+        post = Celerite.CeleriteKalmanPosterior(test_ts, test_fs, test_dfs,
+                                                1, 1,
+                                                210900, 211000,
+                                                10.0, 20.0,
+                                                0.1, 10.0,
+                                                0.5, 1000.0,
+                                                1.0, 1000.0,
+                                                1.0, 1000.0)
+
         drw_rms = [sqrt(1000.0)]
         drw_rates = [1.0]
         osc_rms = [sqrt(1432.0)]
@@ -17,11 +26,16 @@ using LinearAlgebra
         osc_Qs = [100.0]
 
         mu = 210933.0
+        nu = 1.0
+
+        p = Celerite.CeleriteKalmanParams(mu, nu, drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
+        x = Celerite.to_array(post, p)
 
         N = size(test_ts,1)
 
         filt = Celerite.CeleriteKalmanFilter(mu, drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
         ll_filt = Celerite.log_likelihood(filt, test_ts, test_fs, test_dfs)
+        ll_params = Celerite.log_likelihood(post, x)
         cov = Celerite.raw_covariance(test_ts, test_dfs, drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
 
         F = cholesky(cov)
@@ -33,6 +47,7 @@ using LinearAlgebra
         ll_raw = -0.5*N*log(2.0*pi) - logdet - 0.5*dot((test_fs .- mu), F \ (test_fs .- mu))
 
         @test abs(ll_filt - ll_raw[1]) < 1e-10
+        @test abs(ll_filt - ll_params) < 1e-10
     end
 
     @testset "Check that PSD can be run" begin

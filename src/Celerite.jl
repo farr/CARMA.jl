@@ -14,6 +14,8 @@ a sum of low-order terms.
 
 module Celerite
 
+using Ensemble
+
 mutable struct CeleriteKalmanFilter
     mu::Float64 # Mean
     x::Array{ComplexF64, 1} # State mean
@@ -470,6 +472,145 @@ function predict(filt::CeleriteKalmanFilter, ts, ys, dys, tsp)
     vysp = 1.0./(1.0./vyspforward .+ 1.0./vyspbackward)
 
     ysp[size(ts,1)+1:end], vysp[size(ts, 1)+1:end]
+end
+
+struct CeleriteKalmanPosterior
+    ts::Array{Float64, 1}
+    ys::Array{Float64, 1}
+    dys::Array{Float64, 1}
+    ndrw::Int
+    nosc::Int
+    mumin::Float64
+    mumax::Float64
+    fmin::Float64
+    fmax::Float64
+    ratemin::Float64
+    ratemax::Float64
+    Qmin::Float64
+    Qmax::Float64
+    drw_rms_min::Float64
+    drw_rms_max::Float64
+    osc_rms_min::Float64
+    osc_rms_max::Float64
+end
+
+struct CeleriteKalmanParams
+    mu::Float64
+    nu::Float64
+    drw_rms::Array{Float64, 1}
+    drw_rates::Array{Float64, 1}
+    osc_rms::Array{Float64, 1}
+    osc_freqs::Array{Float64, 1}
+    osc_Qs::Array{Float64, 1}
+end
+
+function ndim(post::CeleriteKalmanPosterior)
+    2 + 2*post.ndrw + 3*post.nosc
+end
+
+function to_params(post::CeleriteKalmanPosterior, x::Array{Float64, 1})
+    nd = post.ndrw
+    no = post.nosc
+
+    mu = Parameterizations.bounded_value(x[1], post.mumin, post.mumax)
+    nu = Parameterizations.bounded_value(x[2], 0.1, 10.0)
+    drw_rms = Parameterizations.bounded_value.(x[3:3+nd-1], post.drw_rms_min, post.drw_rms_max)
+    drw_rates = Parameterizations.bounded_value.(x[3+nd:3+2*nd-1], post.ratemin, post.ratemax)
+    osc_rms = Parameterizations.bounded_value.(x[3+2*nd:3+2*nd+no-1], post.osc_rms_min, post.osc_rms_max)
+    osc_freqs = Parameterizations.bounded_value.(x[3+2*nd+no:3+2*nd+2*no-1], post.fmin, post.fmax)
+    osc_Qs = Parameterizations.bounded_value.(x[3+2*nd+2*no:3+2*nd+3*no-1], post.Qmin, post.Qmax)
+
+    CeleriteKalmanParams(mu, nu, drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
+end
+
+function to_array(post::CeleriteKalmanPosterior, p::CeleriteKalmanParams)
+    x = zeros(ndim(post))
+
+    nd = post.ndrw
+    no = post.nosc
+
+    x[1] = Parameterizations.bounded_param(p.mu, post.mumin, post.mumax)
+    x[2] = Parameterizations.bounded_param(p.nu, 0.1, 10)
+    x[3:3+nd-1] = Parameterizations.bounded_param.(p.drw_rms, post.drw_rms_min, post.drw_rms_max)
+    x[3+nd:3+2*nd-1] = Parameterizations.bounded_param.(p.drw_rates, post.ratemin, post.ratemax)
+    x[3+2*nd:3+2*nd+no-1] = Parameterizations.bounded_param.(p.osc_rms, post.osc_rms_min, post.osc_rms_max)
+    x[3+2*nd+no:3+2*nd+2*no-1] = Parameterizations.bounded_param.(p.osc_freqs, post.fmin, post.fmax)
+    x[3+2*nd+2*no:3+2*nd+3*no-1] = Parameterizations.bounded_param.(p.osc_Qs, post.Qmin, post.Qmax)
+
+    x
+end
+
+function log_prior(post::CeleriteKalmanPosterior, x::Array{Float64, 1})
+    log_prior(post, to_params(post, x), x)
+end
+
+function log_prior(post::CeleriteKalmanPosterior, p::CeleriteKalmanParams)
+    log_prior(post, p, to_array(post, p))
+end
+
+function log_prior(post::CeleriteKalmanPosterior, p::CeleriteKalmanParams, x::Array{Float64, 1})
+    nd = post.ndrw
+    no = post.nosc
+
+    lp = 0.0
+
+    # Flat prior on mu
+    lp += Parameterizations.bounded_logjac(p.mu, x[1], post.mumin, post.mumax)
+
+    # Flat-in-log prior on nu
+    lp += -log(p.nu) + Parameterizations.bounded_logjac(p.nu, x[2], 0.1, 10.0)
+
+    # Flat in log prior on rms
+    lp += -sum(log.(p.drw_rms)) + sum(Parameterizations.bounded_logjac(p.drw_rms, x[3:3+nd-1], post.drw_rms_min, post.drw_rms_max))
+
+    # Flat in log prior on rates
+    lp += -sum(log.(p.drw_rates)) + sum(Parameterizations.bounded_logjac(p.drw_rates, x[3+nd:3+2*nd-1], post.ratemin, post.ratemax))
+
+    # Flat in log prior on osc rms
+    lp += -sum(log.(p.osc_rms)) + sum(Parameterizations.bounded_logjac(p.osc_rms, x[3+2*nd:3+2*nd+no-1], post.osc_rms_min, post.osc_rms_max))
+
+    # Flat in log prior on osc freqs
+    lp += -sum(log.(p.osc_freqs)) + sum(Parameterizations.bounded_logjac(p.osc_freqs, x[3+2*nd+no:3+2*nd+2*no-1], post.fmin, post.fmax))
+
+    # Flat in log prior on Q
+    lp += -sum(log.(p.osc_Qs)) + sum(Parameterizations.bounded_logjac(p.osc_Qs, x[3+2*nd+2*no:3+2*nd+3*no-1], post.Qmin, post.Qmax))
+
+    lp
+end
+
+function log_likelihood(post::CeleriteKalmanPosterior, x::Array{Float64, 1})
+    log_likelihood(post, to_params(post, x))
+end
+
+function log_likelihood(post::CeleriteKalmanPosterior, p::CeleriteKalmanParams)
+    filt = CeleriteKalmanFilter(p.mu, p.drw_rms, p.drw_rates, p.osc_rms, p.osc_freqs, p.osc_Qs)
+
+    log_likelihood(filt, post.ts, post.ys, p.nu*post.dys)
+end
+
+function init(post::CeleriteKalmanPosterior, n::Int)
+    nd = post.ndrw
+    no = post.nosc
+
+    xs = zeros(ndim(post), n)
+
+    for i in 1:n
+        mu = post.mumin + (post.mumax-post.mumin)*rand()
+        nu = exp(log(0.1) + (log(10.0) - log(0.1))*rand())
+
+        drw_rms = exp.(log(post.drw_rms_min) + log(post.drw_rms_max/post.drw_rms_min)*rand(nd))
+        drw_rates = exp.(log(post.ratemin) + log(post.ratemax/post.ratemin)*rand(nd))
+
+        osc_rms = exp.(log(post.osc_rms_min) + log(post.rms_osc_max/post.osc_rms_min)*rand(no))
+        osc_freqs = exp.(log(post.fmin) + log(post.fmax/post.fmin)*rand(no))
+        osc_Qs = exp.(log(post.Qmin) + log(post.Qmax/post.Qmin)*rand(no))
+
+        p = CeleriteKalmanParams(mu, nu, drw_rms, drw_rates, osc_rms, osc_freqs, osc_Qs)
+
+        xs[:,i] = to_array(post, p)
+    end
+
+    xs
 end
 
 end
